@@ -81,3 +81,4 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 - M5: คลังไฟล์ + สิทธิ์การใช้งาน, ใส่รูป/คลิปในฉาก, usage log, เพดานค่าใช้จ่าย
 - เริ่มใช้ git (commit แรก = สถานะ ณ จุดพักนี้), เพิ่มไฟล์นี้
 - แก้ 3 ประเด็นจาก security review อัตโนมัติ (open redirect, SSRF, asset storage_key) — ดูตารางปัญหาด้านบน
+- security review รอบสอง: redirect ที่ normalize แล้วกลายเป็น `//evil.com` (`/.//evil.com`, `/%2e//…`) → ตรวจผลลัพธ์หลัง normalize ซ้ำ; ดาวน์โหลดรูปใช้ timeout แบบ idle (เซิร์ฟเวอร์ส่งทีละไบต์ค้างได้) → เปลี่ยนเป็นเส้นตายรวมด้วย `AbortSignal.timeout`

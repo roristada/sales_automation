@@ -11,7 +11,9 @@ export function safeNext(next: string | null | undefined, fallback = "/dashboard
   if (!next || !next.startsWith("/") || next.startsWith("//") || UNSAFE_CHARS.test(next)) return fallback;
   try {
     const url = new URL(next, BASE);
-    return url.origin === BASE ? `${url.pathname}${url.search}${url.hash}` : fallback;
+    const out = `${url.pathname}${url.search}${url.hash}`;
+    // Check the normalised result too: "/.//evil.com" or "/%2e//evil.com" become "//evil.com".
+    return url.origin === BASE && out.startsWith("/") && !out.startsWith("//") && !out.startsWith("/\\") ? out : fallback;
   } catch {
     return fallback;
   }

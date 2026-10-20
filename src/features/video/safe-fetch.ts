@@ -76,6 +76,9 @@ export interface FetchedFile {
 export async function fetchPublic(rawUrl: string, opts: { timeoutMs: number; maxBytes: number; maxRedirects?: number }): Promise<FetchedFile> {
   let url = new URL(rawUrl);
   const deadline = Date.now() + opts.timeoutMs;
+  // Absolute deadline for the whole download (all hops): socket timeouts only catch idle
+  // connections, so a server trickling bytes could otherwise hold the worker indefinitely.
+  const signal = AbortSignal.timeout(opts.timeoutMs);
   for (let hop = 0; hop <= (opts.maxRedirects ?? 3); hop++) {
     if (url.protocol !== "http:" && url.protocol !== "https:") throw new BlockedAddressError("รองรับเฉพาะลิงก์ http(s)");
     if (url.username || url.password) throw new BlockedAddressError("ลิงก์มีชื่อผู้ใช้/รหัสผ่าน");
@@ -85,7 +88,7 @@ export async function fetchPublic(rawUrl: string, opts: { timeoutMs: number; max
 
     const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
-      const req = client.get(url, { lookup: guardedLookup as never, timeout: Math.max(1, deadline - Date.now()), headers: { "user-agent": "sales-automation-render/1" } }, resolve);
+      const req = client.get(url, { lookup: guardedLookup as never, timeout: Math.max(1, deadline - Date.now()), signal, headers: { "user-agent": "sales-automation-render/1" } }, resolve);
       req.on("timeout", () => req.destroy(new Error("หมดเวลาเชื่อมต่อ")));
       req.on("error", reject);
     });
@@ -109,7 +112,13 @@ export async function fetchPublic(rawUrl: string, opts: { timeoutMs: number; max
       });
       res.on("end", resolve);
       res.on("error", reject);
-      res.setTimeout(Math.max(1, deadline - Date.now()), () => res.destroy(new Error("หมดเวลาดาวน์โหลด")));
+      const onAbort = () => {
+        res.destroy();
+        reject(new Error("หมดเวลาดาวน์โหลด"));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+      res.on("close", () => signal.removeEventListener("abort", onAbort));
     });
     return { status: res.statusCode ?? 0, contentType: res.headers["content-type"]?.split(";")[0].trim() ?? "", body: Buffer.concat(chunks) };
   }
