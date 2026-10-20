@@ -429,8 +429,8 @@ Recorded per §15.7. Last updated 2026-10-20.
     `DataTable`/`Th`/`Td`/`Tr` (with `hideBelow` for limited-column
     mobile tables). Shell: `src/components/layout/app-shell.tsx`, nav
     order in `nav-config.ts`.
--   **Planned modules in navigation (§6).** Analytics has no backend
-    yet. It appears in the sidebar as a non-interactive item
+-   **Planned modules in navigation (§6).** Every module is live
+    now. A future module without a backend appears in the sidebar as a non-interactive item
     labelled "เร็วๆ นี้" with the delivering milestone in a tooltip; no
     placeholder pages exist.
 -   **Product Research vs Products.** `/research` is for evaluation
