@@ -63,6 +63,9 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 | Hook ยาวทับรูปสินค้า / ถูกตัดด้วย "…" | layout คงที่ | ขยับการ์ดลง + ลดขนาดตัวอักษรตามความยาว Hook |
 | เซิร์ฟเวอร์ uncaught exception `Controller is already closed` | `Readable.toWeb` ตอนเบราว์เซอร์ยกเลิก range request ของวิดีโอ | สตรีมไฟล์แบบรองรับการยกเลิก (`serve-file.ts`) |
 | e2e render ล้มเป็นบางครั้ง | test รันขนานกันบนคิวเดียว worker ของอีก test หยิบงานไป / Player preview มี `<video>` ด้วย | รอผลลัพธ์แทนการเช็ก log; เลือก `video[src*="/api/renders/"]` |
+| **Security review:** open redirect หลัง login (`/\evil.com` ผ่านการตรวจเดิม) | เช็กแค่ขึ้นต้น `/` และไม่ใช่ `//` | `src/lib/safe-redirect.ts` ปฏิเสธ backslash/control chars และต้อง resolve เป็น origin เดิม |
+| **Security review:** SSRF — worker โหลดรูปจาก `image_url` ที่ผู้ใช้ใส่ได้ทุกที่รวมถึง localhost/เครือข่ายภายใน | ใช้ `fetch` ตรงๆ ตาม redirect | `fetchPublic` (`safe-fetch.ts`): อนุญาตเฉพาะ IP สาธารณะ ตรวจตอนเชื่อมต่อจริงทุก redirect hop, จำกัดขนาด/เวลา |
+| **Security review:** ปลอม `storage_key` ของ asset ผ่าน API ให้ชี้ไฟล์ของผู้ใช้อื่นแล้วดาวน์โหลด | insert ผ่าน PostgREST ได้โดยไม่ตรวจรูปแบบ key | migration `20261025000000_asset_key_guard.sql` บังคับ key = `<owner>/<id>/original.<ext>` + mime ที่รับ; route ตรวจ prefix ซ้ำ; มี RLS test |
 | Upload ใหญ่ผ่าน middleware ถูกตัด | Next 15 buffer body ใน middleware สูงสุด 10 MB | `experimental.middlewareClientMaxBodySize: "210mb"` |
 
 ---
@@ -77,3 +80,4 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 - M4: Remotion composition, worker, คิว render, QA ด้วย ffprobe, Video Studio, ดาวน์โหลด MP4/JPG/SRT/VTT; ติดตั้ง FFmpeg
 - M5: คลังไฟล์ + สิทธิ์การใช้งาน, ใส่รูป/คลิปในฉาก, usage log, เพดานค่าใช้จ่าย
 - เริ่มใช้ git (commit แรก = สถานะ ณ จุดพักนี้), เพิ่มไฟล์นี้
+- แก้ 3 ประเด็นจาก security review อัตโนมัติ (open redirect, SSRF, asset storage_key) — ดูตารางปัญหาด้านบน

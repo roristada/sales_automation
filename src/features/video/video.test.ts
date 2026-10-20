@@ -105,3 +105,19 @@ describe("timeline media", () => {
     expect(buildTimeline(input).scenes[0].media).toBeNull();
   });
 });
+
+describe("SSRF guard", () => {
+  it("allows only public addresses", async () => {
+    const { isPublicAddress } = await import("./safe-fetch");
+    for (const ip of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"]) expect(isPublicAddress(ip)).toBe(true);
+    for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "not-an-ip"]) {
+      expect(isPublicAddress(ip)).toBe(false);
+    }
+  });
+  it("refuses loopback and private targets before connecting", async () => {
+    const { fetchPublic } = await import("./safe-fetch");
+    for (const url of ["http://127.0.0.1:55321/rest/v1/", "http://localhost:3000/", "http://[::1]/", "http://169.254.169.254/latest/meta-data/", "file:///etc/passwd"]) {
+      await expect(fetchPublic(url, { timeoutMs: 2000, maxBytes: 1000 })).rejects.toThrow();
+    }
+  });
+});

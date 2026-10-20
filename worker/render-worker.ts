@@ -18,6 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 import { licenseVerdict } from "@/features/assets/licensing";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
 import { runFfprobe } from "@/features/video/ffprobe";
+import { fetchPublic } from "@/features/video/safe-fetch";
 import { probeFacts, type QaCheck, qaReport } from "@/features/video/qa";
 import { getStorage } from "@/features/video/storage";
 import { buildTimeline, RENDERER_VERSION, type SceneMedia, toSrt, toVtt, VIDEO, type VideoProps } from "@/features/video/timeline";
@@ -128,20 +129,18 @@ async function isCanceled(jobId: string) {
   return data?.status === "canceled";
 }
 
-/** Downloads the product image into a data: URI so rendering never depends on the network. */
+/**
+ * Downloads the product image into a data: URI so rendering never depends on the network.
+ * The URL is user-supplied: `fetchPublic` refuses local/private addresses on every hop (SSRF).
+ */
 async function loadImage(url: string | null): Promise<{ src: string | null; check: QaCheck }> {
   const fail = (detail: string) => ({ src: null, check: { key: "image", label: "รูปสินค้า", ok: false, detail, level: "warn" as const } });
   if (!url) return fail("สินค้าไม่มีลิงก์รูป — ใช้การ์ดชื่อสินค้าแทน");
   try {
-    const u = new URL(url);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return fail("ลิงก์รูปต้องเป็น http(s)");
-    const res = await fetch(u, { signal: AbortSignal.timeout(15_000), redirect: "follow" });
-    if (!res.ok) return fail(`โหลดรูปไม่สำเร็จ (HTTP ${res.status}) — ใช้การ์ดชื่อสินค้าแทน`);
-    const type = res.headers.get("content-type")?.split(";")[0].trim() ?? "";
-    if (!/^image\/(png|jpe?g|webp|gif|avif)$/.test(type)) return fail(`ลิงก์ไม่ใช่ไฟล์รูป (${type || "ไม่ทราบชนิด"}) — ใช้การ์ดชื่อสินค้าแทน`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_IMAGE_BYTES) return fail("รูปใหญ่เกิน 5 MB — ใช้การ์ดชื่อสินค้าแทน");
-    return { src: `data:${type};base64,${buf.toString("base64")}`, check: { key: "image", label: "รูปสินค้า", ok: true, detail: "ใช้รูปจากลิงก์สินค้า", level: "warn" } };
+    const res = await fetchPublic(url, { timeoutMs: 15_000, maxBytes: MAX_IMAGE_BYTES });
+    if (res.status < 200 || res.status >= 300) return fail(`โหลดรูปไม่สำเร็จ (HTTP ${res.status}) — ใช้การ์ดชื่อสินค้าแทน`);
+    if (!/^image\/(png|jpe?g|webp|gif|avif)$/.test(res.contentType)) return fail(`ลิงก์ไม่ใช่ไฟล์รูป (${res.contentType || "ไม่ทราบชนิด"}) — ใช้การ์ดชื่อสินค้าแทน`);
+    return { src: `data:${res.contentType};base64,${res.body.toString("base64")}`, check: { key: "image", label: "รูปสินค้า", ok: true, detail: "ใช้รูปจากลิงก์สินค้า", level: "warn" } };
   } catch (e) {
     return fail(`โหลดรูปไม่สำเร็จ: ${(e as Error).message} — ใช้การ์ดชื่อสินค้าแทน`);
   }

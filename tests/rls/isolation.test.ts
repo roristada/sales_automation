@@ -255,18 +255,26 @@ describe("row level security", () => {
 
   it("assets, usage and spending limits are owner-only; file facts and usage can't be forged", async () => {
     const sha = "a".repeat(64);
+    const assetId = crypto.randomUUID();
     const { data: asset, error } = await a.client
       .from("assets")
-      .insert({ kind: "image", storage_key: `${a.id}/x/original.jpg`, name: "a.jpg", mime: "image/jpeg", size_bytes: 10, sha256: sha, source: "own" })
+      .insert({ id: assetId, kind: "image", storage_key: `${a.id}/${assetId}/original.jpg`, name: "a.jpg", mime: "image/jpeg", size_bytes: 10, sha256: sha, source: "own" })
       .select("id, license")
       .single();
+    // A row can't point at someone else's file (or any path outside its own folder).
+    const forgedId = crypto.randomUUID();
+    for (const key of [`${b.id}/${forgedId}/original.jpg`, `${a.id}/${assetId}/original.jpg`, `${a.id}/${forgedId}/video.mp4`, `${a.id}/${forgedId}/../x/original.jpg`]) {
+      const forged = await a.client.from("assets").insert({ id: forgedId, kind: "image", storage_key: key, name: "f", mime: "image/jpeg", size_bytes: 1, sha256: "c".repeat(64), source: "own" });
+      expect(forged.error?.code).toBe("23514");
+    }
     expect(error).toBeNull();
     expect(asset!.license).toBe("unknown"); // never assumed safe
     // Descriptive fields editable; file facts are not.
     expect((await a.client.from("assets").update({ license: "own_work" }).eq("id", asset!.id)).error).toBeNull();
     expect((await a.client.from("assets").update({ storage_key: "../../etc/passwd" }).eq("id", asset!.id)).error?.code).toBe("42501");
     // Same file twice for the same user is rejected.
-    expect((await a.client.from("assets").insert({ kind: "image", storage_key: "k", name: "b", mime: "image/jpeg", size_bytes: 1, sha256: sha, source: "own" })).error?.code).toBe("23505");
+    const dupId = crypto.randomUUID();
+    expect((await a.client.from("assets").insert({ id: dupId, kind: "image", storage_key: `${a.id}/${dupId}/original.jpg`, name: "b", mime: "image/jpeg", size_bytes: 1, sha256: sha, source: "own" })).error?.code).toBe("23505");
 
     expect((await b.client.from("assets").select("id")).data).toEqual([]);
     expect((await b.client.from("assets").update({ name: "x" }).eq("id", asset!.id).select()).data).toEqual([]);

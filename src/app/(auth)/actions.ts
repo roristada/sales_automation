@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { safeNext } from "@/lib/safe-redirect";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,9 +20,7 @@ export interface AuthFormState {
 }
 
 /** Only allow same-site relative redirects. */
-function safeNext(next: string | undefined) {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-}
+
 
 function parse(formData: FormData) {
   const result = credentialsSchema.safeParse({
