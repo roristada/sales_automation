@@ -134,3 +134,33 @@ test("milestone 1 flow", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login/);
 });
+
+test("Shopee Affiliate bulk-link export imports as-is", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "สร้างบัญชี" }).click();
+  await page.getByLabel("อีเมล").fill(`e2e-shopee-${run}@example.test`);
+  await page.getByLabel("รหัสผ่าน").fill(password);
+  await page.getByRole("button", { name: "สร้างบัญชี" }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+
+  // Same header row and formats as Shopee's "รับลิงก์แบบหมู่" download (data is made up).
+  const file = [
+    "รหัสสินค้า,ชื่อสินค้า,ราคา,ขาย,ชื่อร้านค้า,อัตราค่าคอมมิชชัน,คอมมิชชัน,ลิงก์สินค้า,ลิงก์ข้อเสนอ",
+    `${run}11,ร่มพับ E2E,63,90พัน+,ร้านตัวอย่าง,12%,฿7.56,https://shopee.co.th/product/9/${run}11,https://s.shopee.co.th/e2eA`,
+    `${run}12,หูฟัง E2E,1.4พัน,4พัน+,ร้านตัวอย่าง,12%,฿171.00,https://shopee.co.th/product/9/${run}12,https://s.shopee.co.th/e2eB`,
+  ].join("\n");
+  await page.goto("/products/import");
+  await page.getByLabel(/ไฟล์ CSV/).setInputFiles({ name: "ลิงก์สินค้าหลายลิงก์e2e.csv", mimeType: "text/csv", buffer: Buffer.from(`﻿${file}`) });
+  await expect(page.getByLabel(/ลิงก์ Affiliate/)).toHaveValue("ลิงก์ข้อเสนอ");
+  await expect(page.getByLabel(/ค่าคอม บาท/)).toHaveValue("คอมมิชชัน");
+  // No date column: one date for the whole file, defaulting to the file's date.
+  await page.getByLabel(/วันที่ได้ข้อมูลราคา\/ค่าคอม \(ใช้กับทุกแถว\)/).fill("2026-10-21");
+  await expect(page.getByText(/ตรวจ 2 แถวแรก: ผิดพลาด 0 แถว/)).toBeVisible();
+  await page.getByRole("button", { name: /นำเข้า 2 แถว/ }).click();
+  await expect(page.getByText("นำเข้าเสร็จแล้ว")).toBeVisible();
+
+  await page.goto("/products");
+  await page.getByRole("link", { name: "หูฟัง E2E" }).first().click();
+  await expect(page.getByText("฿1,425").first()).toBeVisible();
+  await expect(page.getByText("ไม่ทราบวันที่ดึงข้อมูล")).toHaveCount(0);
+});

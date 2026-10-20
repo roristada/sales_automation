@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type ProductInput, productInputSchema } from "./schema";
+import { parseNumberCell, type ProductInput, productInputSchema } from "./schema";
 
 /** System fields a CSV column can be mapped to. */
 export const CSV_FIELDS = [
@@ -33,12 +33,12 @@ const HEADER_HINTS: Record<CsvFieldKey, string[]> = {
   name: ["product name", "name", "title", "item name", "ชื่อสินค้า", "ชื่อ"],
   source_product_id: ["item id", "itemid", "product id", "productid", "sku", "รหัสสินค้า"],
   product_url: ["product url", "product link", "url", "link", "ลิงก์สินค้า", "ลิงค์สินค้า"],
-  affiliate_url: ["affiliate url", "affiliate link", "offer link", "short link", "ลิงก์ affiliate", "ลิงก์แอฟฟิลิเอต"],
+  affiliate_url: ["affiliate url", "affiliate link", "offer link", "short link", "ลิงก์ affiliate", "ลิงก์แอฟฟิลิเอต", "ลิงก์ข้อเสนอ"],
   marketplace: ["source", "marketplace", "shop platform", "platform", "แหล่งที่มา"],
   category: ["category", "หมวดหมู่"],
   price: ["price", "item price", "ราคา"],
   commission_rate: ["commission rate", "commission %", "rate", "อัตราค่าคอม", "ค่าคอม %"],
-  commission_amount: ["commission", "commission amount", "ค่าคอมมิชชัน", "ค่าคอม"],
+  commission_amount: ["commission", "commission amount", "ค่าคอมมิชชัน", "ค่าคอม", "คอมมิชชัน"],
   image_url: ["image url", "image", "image link", "รูป", "ลิงก์รูป"],
   description: ["description", "product description", "รายละเอียด"],
   retrieved_at: ["retrieved", "retrieved at", "updated", "updated at", "date", "วันที่"],
@@ -80,6 +80,27 @@ export type MappedRow =
 /** Undoes the `'` our export adds before =, +, -, @ so spreadsheets don't run cell text as a formula. */
 const unescapeFormula = (v: unknown) => (typeof v === "string" && /^'[=+\-@\t\r]/.test(v) ? v.slice(1) : v);
 
+const ABBREVIATED = /^\s*฿?\s*(\d+(?:\.(\d+))?)\s*(พัน|หมื่น|แสน|k)\s*$/i;
+const UNIT: Record<string, number> = { พัน: 1_000, หมื่น: 10_000, แสน: 100_000, k: 1_000 };
+
+/**
+ * Shopee Affiliate's bulk-link export shortens prices ("1.4พัน") but gives the exact commission and
+ * rate, so the exact price is commission ÷ rate. Used only when that fits the rounded figure;
+ * otherwise the cell stays as-is and fails validation rather than storing a guess.
+ */
+function resolveAbbreviatedPrice(price: unknown, rate: unknown, amount: unknown): unknown {
+  const m = typeof price === "string" ? ABBREVIATED.exec(price) : null;
+  if (!m) return price;
+  const unit = UNIT[m[3].toLowerCase()];
+  const rounded = Number(m[1]) * unit;
+  const tolerance = 0.5 * 10 ** -(m[2]?.length ?? 0) * unit;
+  const r = parseNumberCell(rate);
+  const a = parseNumberCell(amount);
+  if (r === null || a === null || !(r > 0) || !(a >= 0)) return price;
+  const exact = Math.round((a / (r / 100)) * 100) / 100;
+  return Math.abs(exact - rounded) <= tolerance ? exact : price;
+}
+
 const systemId = z.preprocess((v) => (typeof v === "string" ? v.trim() || null : (v ?? null)), z.uuid({ error: "รหัสในระบบไม่ถูกต้อง" }).nullable());
 
 /** Applies the mapping to one raw CSV row and validates it with the shared product schema. */
@@ -88,6 +109,9 @@ export function mapRow(raw: Record<string, unknown>, mapping: ColumnMapping): Ma
   for (const { key } of CSV_FIELDS) {
     const header = mapping[key];
     if (header !== undefined && key !== "id") candidate[key] = unescapeFormula(raw[header]);
+  }
+  if (mapping.price !== undefined) {
+    candidate.price = resolveAbbreviatedPrice(candidate.price, mapping.commission_rate && raw[mapping.commission_rate], mapping.commission_amount && raw[mapping.commission_amount]);
   }
   const parsed = productInputSchema.safeParse(candidate);
   const id = systemId.safeParse(mapping.id === undefined ? null : raw[mapping.id]);

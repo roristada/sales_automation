@@ -4,6 +4,7 @@ import Link from "next/link";
 import Papa from "papaparse";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { NativeSelect } from "@/components/shared/field";
@@ -11,7 +12,21 @@ import { Notice } from "@/components/shared/states";
 import { type ChunkResult, finishImport, importChunk, startImport } from "./actions";
 import { type ColumnMapping, CSV_FIELDS, type CsvFieldKey, guessMapping, IMPORT_CHUNK_SIZE, mapRow, MAX_IMPORT_ROWS, validateMapping } from "./csv";
 
-type Parsed = { fileName: string; headers: string[]; rows: Record<string, string>[] };
+type Parsed = { fileName: string; headers: string[]; rows: Record<string, string>[]; fileDate: string };
+
+/** Column added to every row when the file has no date column and the user gives one date for all. */
+const GIVEN_DATE_COLUMN = "วันที่ได้ข้อมูล (ระบุตอนนำเข้า)";
+
+/** The mapping and rows actually sent: the user's mapping plus the date given for the whole file. */
+function withGivenDate(parsed: Parsed, mapping: ColumnMapping, date: string): { mapping: ColumnMapping; rows: Record<string, string>[] } {
+  if (mapping.retrieved_at || !date) return { mapping, rows: parsed.rows };
+  return { mapping: { ...mapping, retrieved_at: GIVEN_DATE_COLUMN }, rows: parsed.rows.map((r) => ({ ...r, [GIVEN_DATE_COLUMN]: date })) };
+}
+
+const localDate = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 type Phase =
   | { kind: "select" }
   | { kind: "map"; parsed: Parsed }
@@ -27,6 +42,7 @@ export function CsvImport({ initialMode = "skip" }: { initialMode?: "skip" | "up
   const [duplicateMode, setDuplicateMode] = useState<"skip" | "update">(initialMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [givenDate, setGivenDate] = useState("");
 
   function onFile(file: File | undefined) {
     setError(null);
@@ -41,16 +57,21 @@ export function CsvImport({ initialMode = "skip" }: { initialMode?: "skip" | "up
         if (!res.data.length) return setError("ไฟล์ไม่มีข้อมูล");
         if (res.data.length > MAX_IMPORT_ROWS) return setError(`นำเข้าได้ครั้งละไม่เกิน ${MAX_IMPORT_ROWS.toLocaleString()} แถว`);
         setMapping(guessMapping(headers));
-        setPhase({ kind: "map", parsed: { fileName: file.name, headers, rows: res.data } });
+        // Exports like Shopee's bulk-link file have no date column: default to the file's own date.
+        setGivenDate(localDate(file.lastModified));
+        setPhase({ kind: "map", parsed: { fileName: file.name, headers, rows: res.data, fileDate: localDate(file.lastModified) } });
       },
       error: (err) => setError(`อ่านไฟล์ไม่สำเร็จ: ${err.message}`),
     });
   }
 
-  async function run(parsed: Parsed) {
+  async function run(input: Parsed) {
     setError(null);
     setStarting(true);
-    const started = await startImport({ fileName: parsed.fileName, totalRows: parsed.rows.length, duplicateMode, mapping }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+    const sent = withGivenDate(input, mapping, givenDate);
+    const parsed = { ...input, rows: sent.rows };
+    const mapping_ = sent.mapping;
+    const started = await startImport({ fileName: parsed.fileName, totalRows: parsed.rows.length, duplicateMode, mapping: mapping_ }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
     setStarting(false);
     if (!started.ok) return setError(started.error);
     const { batchId } = started.data;
@@ -59,7 +80,7 @@ export function CsvImport({ initialMode = "skip" }: { initialMode?: "skip" | "up
     setPhase({ kind: "importing", parsed, done: 0, totals });
     for (let i = 0; i < parsed.rows.length; i += IMPORT_CHUNK_SIZE) {
       // Send only mapped columns to keep payloads small.
-      const used = Object.values(mapping).filter(Boolean) as string[];
+      const used = Object.values(mapping_).filter(Boolean) as string[];
       const rows = parsed.rows.slice(i, i + IMPORT_CHUNK_SIZE).map((r) => Object.fromEntries(used.map((h) => [h, r[h]])));
       let res: Awaited<ReturnType<typeof importChunk>>;
       try {
@@ -98,7 +119,7 @@ export function CsvImport({ initialMode = "skip" }: { initialMode?: "skip" | "up
     );
   }
 
-  if (phase.kind === "map") return <MappingStep parsed={phase.parsed} mapping={mapping} setMapping={setMapping} duplicateMode={duplicateMode} setDuplicateMode={setDuplicateMode} error={error} starting={starting} onBack={() => setPhase({ kind: "select" })} onRun={() => run(phase.parsed)} />;
+  if (phase.kind === "map") return <MappingStep parsed={phase.parsed} mapping={mapping} setMapping={setMapping} duplicateMode={duplicateMode} setDuplicateMode={setDuplicateMode} givenDate={givenDate} setGivenDate={setGivenDate} error={error} starting={starting} onBack={() => setPhase({ kind: "select" })} onRun={() => run(phase.parsed)} />;
 
   if (phase.kind === "importing") {
     const pct = Math.round((phase.done / phase.parsed.rows.length) * 100);
@@ -135,6 +156,8 @@ function MappingStep({
   setMapping,
   duplicateMode,
   setDuplicateMode,
+  givenDate,
+  setGivenDate,
   error,
   starting,
   onBack,
@@ -145,6 +168,8 @@ function MappingStep({
   setMapping: (m: ColumnMapping) => void;
   duplicateMode: "skip" | "update";
   setDuplicateMode: (m: "skip" | "update") => void;
+  givenDate: string;
+  setGivenDate: (d: string) => void;
   error: string | null;
   starting: boolean;
   onBack: () => void;
@@ -154,9 +179,10 @@ function MappingStep({
   // Client-side preview of validation on the first 200 rows; the server re-validates everything.
   const preview = useMemo(() => {
     if (mappingError) return null;
-    const sample = parsed.rows.slice(0, 200).map((r) => mapRow(r, mapping));
+    const sent = withGivenDate({ ...parsed, rows: parsed.rows.slice(0, 200) }, mapping, givenDate);
+    const sample = sent.rows.map((r) => mapRow(r, sent.mapping));
     return { checked: sample.length, invalid: sample.filter((s) => !s.ok).length, firstError: sample.find((s) => !s.ok) };
-  }, [parsed.rows, mapping, mappingError]);
+  }, [parsed, mapping, mappingError, givenDate]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -191,6 +217,16 @@ function MappingStep({
           </div>
         ))}
       </div>
+
+      {!mapping.retrieved_at && (
+        <div className="flex max-w-xs flex-col gap-1">
+          <Label htmlFor="given-date">วันที่ได้ข้อมูลราคา/ค่าคอม (ใช้กับทุกแถว)</Label>
+          <Input id="given-date" type="date" value={givenDate} max={localDate(Date.now())} onChange={(e) => setGivenDate(e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            ไฟล์ไม่มีคอลัมน์วันที่ — ค่าเริ่มต้นคือวันที่ของไฟล์ ({parsed.fileDate}) ปล่อยว่างถ้าไม่ทราบ
+          </p>
+        </div>
+      )}
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-base font-semibold">เมื่อพบสินค้าซ้ำ (รหัสสินค้าหรือลิงก์สินค้าตรงกัน)</legend>

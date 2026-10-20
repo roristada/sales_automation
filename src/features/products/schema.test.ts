@@ -155,3 +155,39 @@ describe("downloadable template (public/templates/products-template.csv)", () =>
     expect(mapRow(data[1], mapping)).toMatchObject({ value: { price: 590, commission_rate: 5, category: "อุปกรณ์อิเล็กทรอนิกส์" } });
   });
 });
+
+describe("Shopee Affiliate bulk-link export (ลิงก์สินค้าหลายลิงก์*.csv)", () => {
+  const headers = ["รหัสสินค้า", "ชื่อสินค้า", "ราคา", "ขาย", "ชื่อร้านค้า", "อัตราค่าคอมมิชชัน", "คอมมิชชัน", "ลิงก์สินค้า", "ลิงก์ข้อเสนอ"];
+  const row = (price: string, rate: string, amount: string) => ({
+    รหัสสินค้า: "42662593577",
+    ชื่อสินค้า: "หูฟังไร้สาย",
+    ราคา: price,
+    ขาย: "4พัน+",
+    ชื่อร้านค้า: "Example Store",
+    อัตราค่าคอมมิชชัน: rate,
+    คอมมิชชัน: amount,
+    ลิงก์สินค้า: "https://shopee.co.th/product/1/42662593577",
+    ลิงก์ข้อเสนอ: "https://s.shopee.co.th/abc123",
+  });
+
+  it("maps every product column automatically", () => {
+    expect(guessMapping(headers)).toEqual({
+      name: "ชื่อสินค้า",
+      source_product_id: "รหัสสินค้า",
+      product_url: "ลิงก์สินค้า",
+      affiliate_url: "ลิงก์ข้อเสนอ",
+      price: "ราคา",
+      commission_rate: "อัตราค่าคอมมิชชัน",
+      commission_amount: "คอมมิชชัน",
+    });
+  });
+
+  it("reads plain prices and recovers abbreviated ones (1.4พัน) from the exact commission", () => {
+    const m = guessMapping(headers);
+    expect(mapRow(row("175", "14%", "฿24.50"), m)).toMatchObject({ ok: true, value: { price: 175, commission_rate: 14, commission_amount: 24.5 } });
+    expect(mapRow(row("1.4พัน", "12%", "฿171.00"), m)).toMatchObject({ ok: true, value: { price: 1425, commission_amount: 171 } });
+    // Commission that doesn't fit the rounded price: no guess, the row is reported instead.
+    expect(mapRow(row("1.4พัน", "12%", "฿50.00"), m)).toMatchObject({ ok: false });
+    expect(mapRow(row("2.1หมื่น", "", ""), m)).toMatchObject({ ok: false });
+  });
+});
