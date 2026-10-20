@@ -140,6 +140,7 @@ Migration ทั้งหมดอยู่ใน `supabase/migrations/` ทด�
 | M6 Publishing ✅ (manual) | manual export (MP4/caption/thumbnail/affiliate URL), บันทึกสถานะเผยแพร่เอง, platform adapters เมื่อมีสิทธิ์ | ไม่โพสต์ซ้ำ; ไม่มี auto-post ถ้าไม่มี OAuth/สิทธิ์ |
 | M7 Analytics ✅ (CSV) | CSV import ผลลัพธ์, metrics ตามที่มีจริง | แยก attributed conversions จากยอดรวม; cost ต่อวิดีโอ |
 | M8 Production readiness ✅ (local) | security review, monitoring, backup, deploy docs | security headers + ช่องโหว่ที่พบแก้แล้วพร้อม test; สถานะ worker/คิว/ดิสก์ + `/api/health`; backup ที่ทดสอบกู้คืนทุกครั้ง + restore; DEPLOY.md/SECURITY.md |
+| AI commercial (แผน) | AI กรอกข้อมูล, เขียนสคริปต์, สร้างคลิปวิดีโอต่อฉากผ่าน OpenRouter | ดู [AI_VIDEO_PLAN.md](AI_VIDEO_PLAN.md) — รออนุมัติ |
 
 ## 8. Dependencies และ credentials ที่ต้องเตรียม
 
