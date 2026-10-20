@@ -142,3 +142,16 @@ describe("data status", () => {
     expect(provenanceFor(input, "user_provided")).toEqual({ name: "user_provided", price: "user_provided" });
   });
 });
+
+describe("downloadable template (public/templates/products-template.csv)", () => {
+  it("maps every column automatically and every example row is valid", async () => {
+    const { readFileSync } = await import("node:fs");
+    const Papa = (await import("papaparse")).default;
+    const { data, meta } = Papa.parse<Record<string, string>>(readFileSync("public/templates/products-template.csv", "utf8").replace(/^﻿/, ""), { header: true, skipEmptyLines: true });
+    const mapping = guessMapping(meta.fields!);
+    expect(Object.values(mapping).sort()).toEqual([...meta.fields!].sort());
+    expect(validateMapping(mapping)).toBeNull();
+    for (const row of data) expect(mapRow(row, mapping)).toMatchObject({ ok: true });
+    expect(mapRow(data[1], mapping)).toMatchObject({ value: { price: 590, commission_rate: 5, category: "อุปกรณ์อิเล็กทรอนิกส์" } });
+  });
+});
