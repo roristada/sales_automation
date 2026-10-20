@@ -149,7 +149,11 @@ test("facts pulled from the description stay unconfirmed until checked", async (
   await expect(page.getByText("ใช้ได้ 10 ชั่วโมง")).toHaveCount(0);
   await page.getByRole("button", { name: "ยืนยัน บลูทูธ" }).click();
   await expect(page.getByText("1 ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน")).toBeVisible();
-  await page.getByRole("button", { name: "ยืนยัน กันน้ำ" }).click();
+  // The rest in one go, after a confirmation that lists what is being confirmed.
+  await page.getByRole("button", { name: "ยืนยันทั้งหมด (1)" }).click();
+  const confirmAll = page.getByRole("alertdialog");
+  await expect(confirmAll).toContainText("กันน้ำ IP55");
+  await confirmAll.getByRole("button", { name: "ยืนยันทั้งหมด" }).click();
   await expect(page.getByText(/ดึงมาโดย AI ยังไม่ได้ยืนยัน/)).toHaveCount(0);
   await expect(page.getByText("AI ประมาณการ")).toHaveCount(0);
 });

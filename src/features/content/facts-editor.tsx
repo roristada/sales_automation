@@ -11,7 +11,7 @@ import { TrustBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DataStatus } from "@/features/products/schema";
-import { confirmFact, deleteFact, type FactFormState, saveFact } from "./actions";
+import { confirmAllFacts, confirmFact, deleteFact, type FactFormState, saveFact } from "./actions";
 import { FactExtractDialog } from "./fact-extract-dialog";
 
 export interface FactRow {
@@ -79,7 +79,31 @@ export function FactsEditor({ productId, productName, description, facts }: { pr
     <div className="flex flex-col gap-3">
       {unconfirmed > 0 && (
         <Notice tone="warning">
-          {unconfirmed} ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน — เปิดหน้าสินค้าเทียบทีละข้อ ถูกต้องกด “ยืนยันแล้ว” ไม่ถูกให้แก้ไขหรือลบ สคริปต์ใช้ข้อที่ยังไม่ยืนยันไม่ได้
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {unconfirmed} ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน — เปิดหน้าสินค้าเทียบทีละข้อ ถูกต้องกด “ยืนยันแล้ว” ไม่ถูกให้แก้ไขหรือลบ สคริปต์ใช้ข้อที่ยังไม่ยืนยันไม่ได้
+            </span>
+            <ConfirmDialog
+              trigger={
+                <Button variant="outline" size="sm" className="shrink-0 self-start">
+                  <CheckCircle2 aria-hidden /> ยืนยันทั้งหมด ({unconfirmed})
+                </Button>
+              }
+              title={`ยืนยันข้อเท็จจริงทั้ง ${unconfirmed} ข้อ?`}
+              description={`ยืนยันเมื่อคุณเทียบทุกข้อกับหน้าสินค้าแล้วเท่านั้น หลังยืนยัน สคริปต์จะพูดถึงข้อเหล่านี้ได้: ${facts
+                .filter((f) => f.status === "ai_estimate")
+                .map((f) => `${f.label} ${f.value}`)
+                .join(" · ")}`}
+              confirmLabel="ยืนยันทั้งหมด"
+              confirmVariant="default"
+              onConfirm={async () => {
+                const res = await confirmAllFacts(productId).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+                if (!res.ok) return res.error;
+                toast.success(`ยืนยันแล้ว ${res.data.confirmed} ข้อ`);
+                router.refresh();
+              }}
+            />
+          </div>
         </Notice>
       )}
       {facts.length > 0 && (

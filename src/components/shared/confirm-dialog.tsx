@@ -22,12 +22,15 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  confirmVariant = "destructive",
   onConfirm,
 }: {
   trigger: React.ReactNode;
   title: string;
   description: React.ReactNode;
   confirmLabel: string;
+  /** "default" for confirmations that don't destroy anything. */
+  confirmVariant?: "destructive" | "default";
   /** Return an error message to keep the dialog open, or nothing on success. */
   onConfirm: () => Promise<string | void>;
 }) {
@@ -58,7 +61,7 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>ยกเลิก</AlertDialogCancel>
           <Button
-            variant="destructive"
+            variant={confirmVariant}
             disabled={pending}
             onClick={() =>
               start(async () => {

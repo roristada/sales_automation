@@ -157,6 +157,19 @@ export async function confirmFact(productId: string, factId: string): Promise<Ac
   return { ok: true, data: null };
 }
 
+/** Confirms every AI-extracted fact of a product at once (the user has checked them all). */
+export async function confirmAllFacts(productId: string): Promise<ActionResult<{ confirmed: number }>> {
+  if (!uuid.safeParse(productId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const { supabase } = await requireUser();
+  const pending = supabase.from("product_facts").update({ status: "verified_source" }, { count: "exact" }).eq("product_id", productId).eq("status", "ai_estimate");
+  const withSource = await pending.not("source_url", "is", null);
+  if (withSource.error) return { ok: false, error: dbError(withSource.error) };
+  const withoutSource = await supabase.from("product_facts").update({ status: "user_provided" }, { count: "exact" }).eq("product_id", productId).eq("status", "ai_estimate").is("source_url", null);
+  if (withoutSource.error) return { ok: false, error: dbError(withoutSource.error) };
+  revalidatePath(`/products/${productId}`);
+  return { ok: true, data: { confirmed: (withSource.count ?? 0) + (withoutSource.count ?? 0) } };
+}
+
 // ---------------------------------------------------------------------------
 // Creating a project from a template
 // ---------------------------------------------------------------------------
