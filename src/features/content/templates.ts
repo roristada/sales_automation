@@ -1,0 +1,233 @@
+import { fieldKey, factKey } from "./facts";
+
+/**
+ * Six Thai short-video templates. A template turns a product and its facts into a first draft.
+ * Rules every template follows:
+ * - Only states things that come from facts; each such sentence carries a claim citing the fact.
+ * - Missing facts become "[...]" placeholders, which block approval until filled or removed.
+ * - No opinions presented as facts ("ดีที่สุด", "ขายดี") and no invented numbers.
+ * - The affiliate disclosure is always included.
+ */
+
+export const TEMPLATE_VERSION = 1;
+export const PLATFORMS = ["tiktok", "reels", "shorts"] as const;
+export type Platform = (typeof PLATFORMS)[number];
+export const PLATFORM_LABEL: Record<Platform, string> = { tiktok: "TikTok", reels: "Instagram Reels", shorts: "YouTube Shorts" };
+export const DURATIONS = [15, 30, 45, 60] as const;
+
+export const DISCLOSURE = "#ได้รับค่าคอมมิชชัน ลิงก์ในคลิปเป็นลิงก์ affiliate ผู้ทำคลิปอาจได้รับค่าคอมมิชชันเมื่อมีการซื้อผ่านลิงก์";
+
+const CTA: Record<Platform, string> = {
+  tiktok: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในคลิป",
+  reels: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในไบโอ",
+  shorts: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในคำอธิบาย",
+};
+
+export interface TemplateFact {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface TemplateContext {
+  productName: string;
+  /** Formatted price, or null when the product has no price. */
+  price: string | null;
+  category: string | null;
+  /** User facts in display order. */
+  facts: TemplateFact[];
+  platform: Platform;
+  durationS: number;
+}
+
+export interface ClaimDraft {
+  text: string;
+  /** Fact key: "field:price" or "fact:<uuid>". */
+  factKey: string;
+}
+
+export interface SceneDraft {
+  kind: string;
+  narration: string;
+  on_screen_text: string;
+  visual_note: string;
+  claims: ClaimDraft[];
+}
+
+export interface StoryboardDraft {
+  hook: string;
+  caption: string;
+  cta: string;
+  disclosure: string;
+  scenes: SceneDraft[];
+}
+
+export interface ContentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  /** Facts the template is built around; shown before creating so the user can add them first. */
+  needs: { price: boolean; facts: number };
+  /** Numbers the template itself writes (e.g. "3" in "3 จุดเด่น"); not product claims. */
+  literals: string[];
+  build(ctx: TemplateContext): StoryboardDraft;
+}
+
+/** How many feature scenes fit the target duration. */
+export const featureCount = (durationS: number) => (durationS <= 15 ? 1 : durationS <= 30 ? 2 : 3);
+
+const placeholder = (what: string) => `[${what}]`;
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+function featureScene(ctx: TemplateContext, i: number, kind = "feature"): SceneDraft {
+  const f = ctx.facts[i];
+  if (!f) {
+    return {
+      kind,
+      narration: placeholder(`จุดเด่นข้อที่ ${i + 1} — เพิ่มข้อเท็จจริงของสินค้าก่อน แล้วเขียนจากข้อเท็จจริงนั้น`),
+      on_screen_text: "",
+      visual_note: "ภาพใกล้ส่วนที่เกี่ยวกับจุดเด่นนี้",
+      claims: [],
+    };
+  }
+  const sentence = `${f.label} ${f.value}`;
+  return {
+    kind,
+    narration: sentence,
+    on_screen_text: clip(`${f.label}: ${f.value}`, 60),
+    visual_note: `ภาพที่แสดง${f.label}`,
+    claims: [{ text: sentence, factKey: factKey(f.id) }],
+  };
+}
+
+function priceScene(ctx: TemplateContext, lead = "ราคาตอนที่ทำคลิป"): SceneDraft {
+  if (!ctx.price) {
+    return {
+      kind: "price",
+      narration: placeholder("ยังไม่มีราคาสินค้า — เพิ่มราคา หรือลบฉากนี้"),
+      on_screen_text: "",
+      visual_note: "หน้าสินค้าที่เห็นราคา",
+      claims: [],
+    };
+  }
+  const sentence = `${lead} ${ctx.price} ราคาอาจเปลี่ยนได้ เช็กในลิงก์อีกครั้ง`;
+  return {
+    kind: "price",
+    narration: sentence,
+    on_screen_text: ctx.price,
+    visual_note: "หน้าสินค้าที่เห็นราคา (ถ่ายวันเดียวกับที่ตรวจราคา)",
+    claims: [{ text: `${lead} ${ctx.price}`, factKey: fieldKey("price") }],
+  };
+}
+
+function ctaScene(ctx: TemplateContext): SceneDraft {
+  return { kind: "cta", narration: CTA[ctx.platform], on_screen_text: "ลิงก์ในคลิป", visual_note: "สินค้าเต็มเฟรม + ลูกศรชี้ลิงก์", claims: [] };
+}
+
+function caption(ctx: TemplateContext, angle: string) {
+  const tag = ctx.category ? ` #${ctx.category.replace(/\s+/g, "")}` : "";
+  return `${ctx.productName} — ${angle}${tag}`;
+}
+
+function base(ctx: TemplateContext, hook: string, angle: string, scenes: SceneDraft[]): StoryboardDraft {
+  return { hook, caption: caption(ctx, angle), cta: CTA[ctx.platform], disclosure: DISCLOSURE, scenes };
+}
+
+const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+
+export const TEMPLATES: ContentTemplate[] = [
+  {
+    id: "quick_review",
+    name: "รีวิวสั้น",
+    description: "แนะนำสินค้า จุดเด่นจากข้อเท็จจริง ราคา และลิงก์",
+    needs: { price: true, facts: 2 },
+    literals: [],
+    build: (ctx) =>
+      base(ctx, `${ctx.productName} มีอะไรน่าสนใจบ้าง มาดูกัน`, "รีวิวสั้น", [
+        { kind: "intro", narration: `นี่คือ ${ctx.productName}`, on_screen_text: clip(ctx.productName, 60), visual_note: "สินค้าเต็มเฟรม หมุนให้เห็นรอบตัว", claims: [] },
+        ...range(featureCount(ctx.durationS)).map((i) => featureScene(ctx, i)),
+        priceScene(ctx),
+        ctaScene(ctx),
+      ]),
+  },
+  {
+    id: "problem_solution",
+    name: "ปัญหา → ทางแก้",
+    description: "เปิดด้วยปัญหาที่คนดูเจอ แล้วแสดงว่าสินค้าช่วยได้อย่างไร",
+    needs: { price: false, facts: 1 },
+    literals: [],
+    build: (ctx) =>
+      base(ctx, "ใครเคยเจอปัญหานี้บ้าง?", "ปัญหาและทางแก้", [
+        { kind: "problem", narration: placeholder("เล่าปัญหาที่สินค้านี้ช่วยได้ ด้วยประสบการณ์จริง"), on_screen_text: "", visual_note: "สถานการณ์ที่เกิดปัญหา", claims: [] },
+        { ...featureScene(ctx, 0, "solution"), visual_note: `ใช้ ${ctx.productName} แก้ปัญหานั้น` },
+        ...range(featureCount(ctx.durationS) - 1).map((i) => featureScene(ctx, i + 1)),
+        ...(ctx.price ? [priceScene(ctx)] : []),
+        ctaScene(ctx),
+      ]),
+  },
+  {
+    id: "top_features",
+    name: "3 จุดเด่น",
+    description: "ลิสต์จุดเด่น 3 ข้อจากข้อเท็จจริงของสินค้า",
+    needs: { price: false, facts: 3 },
+    literals: ["1", "2", "3"],
+    build: (ctx) =>
+      base(ctx, `3 จุดเด่นของ ${ctx.productName}`, "3 จุดเด่น", [
+        ...range(3).map((i) => {
+          const s = featureScene(ctx, i);
+          return { ...s, on_screen_text: s.on_screen_text ? `${i + 1}. ${s.on_screen_text}` : s.on_screen_text };
+        }),
+        ...(ctx.price ? [priceScene(ctx)] : []),
+        ctaScene(ctx),
+      ]),
+  },
+  {
+    id: "unboxing",
+    name: "แกะกล่อง",
+    description: "เปิดกล่อง ดูของจริง และรายละเอียดที่ตรวจสอบได้",
+    needs: { price: false, facts: 2 },
+    literals: [],
+    build: (ctx) =>
+      base(ctx, `แกะกล่อง ${ctx.productName}`, "แกะกล่อง", [
+        { kind: "unbox", narration: "มาแกะกล่องกัน", on_screen_text: "แกะกล่อง", visual_note: "มือเปิดกล่อง เห็นของในกล่องทั้งหมด", claims: [] },
+        { kind: "in_box", narration: placeholder("ในกล่องมีอะไรบ้าง (พูดเฉพาะที่เห็นจริงในคลิป)"), on_screen_text: "", visual_note: "วางของในกล่องเรียงกัน", claims: [] },
+        ...range(featureCount(ctx.durationS)).map((i) => featureScene(ctx, i)),
+        ...(ctx.price ? [priceScene(ctx)] : []),
+        ctaScene(ctx),
+      ]),
+  },
+  {
+    id: "deal_alert",
+    name: "แจ้งราคา",
+    description: "บอกราคาปัจจุบันพร้อมจุดเด่นหนึ่งข้อ ต้องมีราคาที่ยังไม่เก่า",
+    needs: { price: true, facts: 1 },
+    literals: [],
+    build: (ctx) =>
+      base(ctx, ctx.price ? `${ctx.productName} ตอนนี้ ${ctx.price}` : `${ctx.productName} ราคาเท่าไหร่ตอนนี้?`, "แจ้งราคา", [
+        priceScene(ctx, `${ctx.productName} ราคาตอนที่ทำคลิป`),
+        featureScene(ctx, 0),
+        ctaScene(ctx),
+      ]),
+  },
+  {
+    id: "how_to",
+    name: "วิธีใช้",
+    description: "สอนใช้งานทีละขั้น ปิดด้วยจุดเด่นและลิงก์",
+    needs: { price: false, facts: 1 },
+    literals: ["1", "2", "3"],
+    build: (ctx) =>
+      base(ctx, `วิธีใช้ ${ctx.productName} แบบง่ายๆ`, "วิธีใช้", [
+        ...range(Math.min(3, featureCount(ctx.durationS) + 1)).map((i) => ({
+          kind: "step",
+          narration: placeholder(`ขั้นตอนที่ ${i + 1} — อธิบายสิ่งที่ทำในภาพ`),
+          on_screen_text: `ขั้นตอนที่ ${i + 1}`,
+          visual_note: `สาธิตขั้นตอนที่ ${i + 1}`,
+          claims: [],
+        })),
+        featureScene(ctx, 0),
+        ctaScene(ctx),
+      ]),
+  },
+];
+
+export const getTemplate = (id: string) => TEMPLATES.find((t) => t.id === id);

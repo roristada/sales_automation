@@ -1,0 +1,154 @@
+import { estimateSceneSeconds } from "@/features/content/validate";
+
+/**
+ * Turns an approved storyboard into a frame-exact video plan: scene timing, subtitle cues and the
+ * end card. Without TTS (current setup) timing comes from the Thai speech estimate; with TTS it
+ * will come from measured audio length (`audioSeconds`).
+ */
+
+export const VIDEO = { width: 1080, height: 1920, fps: 30 } as const;
+export const RENDERER_VERSION = 1;
+
+/** Longest subtitle line, in characters; ~2 lines of this fit the 1080px frame at the chosen size. */
+export const SUBTITLE_MAX_CHARS = 26;
+const MIN_SCENE_SECONDS = 2;
+const HOOK_SECONDS = 2.5;
+const END_CARD_SECONDS = 3.5;
+
+/** A library image/clip shown full-screen in a scene instead of the product card. */
+export interface SceneMedia {
+  kind: "image" | "video";
+  src: string;
+  /** Clip length; shorter clips loop for the scene's duration. */
+  durationS: number | null;
+}
+
+export interface TimelineScene {
+  id: string;
+  kind: string;
+  narration: string;
+  onScreenText: string;
+  from: number;
+  duration: number;
+  media: SceneMedia | null;
+}
+
+export interface SubtitleCue {
+  from: number;
+  duration: number;
+  text: string;
+}
+
+export interface VideoProps {
+  [key: string]: unknown;
+  fps: number;
+  width: number;
+  height: number;
+  durationInFrames: number;
+  productName: string;
+  /** data: URI or http(s) URL; null → name card instead of a photo. */
+  imageSrc: string | null;
+  hook: string;
+  hookDuration: number;
+  cta: string;
+  disclosure: string;
+  scenes: TimelineScene[];
+  cues: SubtitleCue[];
+  endCard: { from: number; duration: number };
+}
+
+export interface TimelineInput {
+  productName: string;
+  imageSrc: string | null;
+  hook: string;
+  cta: string;
+  disclosure: string;
+  scenes: { id: string; kind: string; narration: string; on_screen_text: string; audioSeconds?: number; media?: SceneMedia | null }[];
+}
+
+/** Word-aware split of Thai/Latin text into lines of at most `max` characters. */
+export function splitSubtitle(text: string, max = SUBTITLE_MAX_CHARS): string[] {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const words = [...new Intl.Segmenter("th", { granularity: "word" }).segment(clean)].map((s) => s.segment);
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    if (line && (line + w).trimEnd().length > max) {
+      lines.push(line.trim());
+      line = w.trimStart();
+    } else {
+      line += w;
+    }
+    // A single "word" longer than a line (e.g. a URL) is hard-wrapped.
+    while (line.length > max) {
+      lines.push(line.slice(0, max));
+      line = line.slice(max);
+    }
+  }
+  if (line.trim()) lines.push(line.trim());
+  return lines;
+}
+
+const toFrames = (seconds: number, fps: number) => Math.max(1, Math.round(seconds * fps));
+
+export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): VideoProps {
+  let cursor = 0;
+  const scenes: TimelineScene[] = [];
+  const cues: SubtitleCue[] = [];
+
+  for (const s of input.scenes) {
+    const seconds = Math.max(MIN_SCENE_SECONDS, s.audioSeconds ?? estimateSceneSeconds(s.narration) + 0.3);
+    const duration = toFrames(seconds, fps);
+    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null });
+
+    // Cues share the scene time in proportion to their length, so long lines stay on longer.
+    const lines = splitSubtitle(s.narration);
+    const total = lines.reduce((n, l) => n + l.length, 0);
+    let at = cursor;
+    lines.forEach((text, i) => {
+      const end = i === lines.length - 1 ? cursor + duration : at + Math.round((duration * text.length) / total);
+      cues.push({ from: at, duration: Math.max(1, end - at), text });
+      at = end;
+    });
+    cursor += duration;
+  }
+
+  const endCard = { from: cursor, duration: toFrames(END_CARD_SECONDS, fps) };
+  const firstScene = scenes[0]?.duration ?? 0;
+  return {
+    fps,
+    width: VIDEO.width,
+    height: VIDEO.height,
+    durationInFrames: endCard.from + endCard.duration,
+    productName: input.productName,
+    imageSrc: input.imageSrc,
+    hook: input.hook,
+    hookDuration: Math.min(toFrames(HOOK_SECONDS, fps), firstScene || toFrames(HOOK_SECONDS, fps)),
+    cta: input.cta,
+    disclosure: input.disclosure,
+    scenes,
+    cues,
+    endCard,
+  };
+}
+
+function stamp(frames: number, fps: number, sep: "," | ".") {
+  const ms = Math.round((frames / fps) * 1000);
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}${sep}${pad(ms % 1000, 3)}`;
+}
+
+/** Subtitles for upload with the video. The disclosure is included at the end card. */
+export function toSrt(props: VideoProps): string {
+  const cues = [...props.cues, { from: props.endCard.from, duration: props.endCard.duration, text: props.disclosure }];
+  return cues.map((c, i) => `${i + 1}\n${stamp(c.from, props.fps, ",")} --> ${stamp(c.from + c.duration, props.fps, ",")}\n${c.text}\n`).join("\n");
+}
+
+export function toVtt(props: VideoProps): string {
+  const cues = [...props.cues, { from: props.endCard.from, duration: props.endCard.duration, text: props.disclosure }];
+  return `WEBVTT\n\n${cues.map((c) => `${stamp(c.from, props.fps, ".")} --> ${stamp(c.from + c.duration, props.fps, ".")}\n${c.text}\n`).join("\n")}`;
+}

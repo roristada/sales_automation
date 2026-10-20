@@ -1,0 +1,177 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", var(--font-thai), sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  --font-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", var(--font-thai), sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-destructive-subtle: var(--destructive-subtle);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-warning: var(--warning);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Design tokens — design.md §3 is the source of truth. Light is the default theme;
+ * `.dark` keeps the same token structure. Components use semantic tokens, never raw hex.
+ *
+ * Naming bridge with shadcn/ui (documented in design.md §13):
+ *   design --accent         → --primary            (primary actions, selected states)
+ *   design --accent-subtle  → --accent / --primary-subtle (hover + selected backgrounds)
+ *   design --danger         → --destructive
+ *   design --surface        → --surface, --card, --popover
+ *   design --surface-muted  → --surface-muted, --muted, --secondary
+ */
+:root {
+  --radius: 0.5rem; /* 8px controls; panels use rounded-lg/xl (8–10px). */
+
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --foreground: #0f172a;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #eef2ff;
+
+  --success: #15803d;
+  --success-subtle: #f0fdf4;
+  --warning: #a16207;
+  --warning-subtle: #fffbeb;
+  --destructive: #b91c1c;
+  --destructive-subtle: #fef2f2;
+  --info: #0369a1;
+  --info-subtle: #f0f9ff;
+
+  /* shadcn aliases */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-muted);
+  --accent: var(--primary-subtle);
+  --accent-foreground: var(--foreground);
+  --input: #cbd5e1;
+  --ring: var(--primary);
+  --chart-1: #4f46e5;
+  --chart-2: #15803d;
+  --chart-3: #a16207;
+  --chart-4: #0369a1;
+  --chart-5: #64748b;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface-muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--primary);
+}
+
+.dark {
+  --background: #0b1120;
+  --surface: #111827;
+  --surface-muted: #1e293b;
+  --foreground: #e2e8f0;
+  --muted-foreground: #94a3b8;
+  --border: #253046;
+
+  --primary: #818cf8;
+  --primary-foreground: #0b1120;
+  --primary-subtle: #1e1b4b;
+
+  --success: #4ade80;
+  --success-subtle: #052e16;
+  --warning: #fbbf24;
+  --warning-subtle: #2b1d05;
+  --destructive: #f87171;
+  --destructive-subtle: #2c0b0b;
+  --info: #38bdf8;
+  --info-subtle: #082f49;
+
+  --input: #334155;
+  --chart-1: #818cf8;
+  --chart-2: #4ade80;
+  --chart-3: #fbbf24;
+  --chart-4: #38bdf8;
+  --chart-5: #94a3b8;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Prices, percentages, metrics: aligned digits (design.md §4). */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
