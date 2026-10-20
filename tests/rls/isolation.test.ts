@@ -357,9 +357,57 @@ ${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure, ...e
     expect((await a.client.from("publications").select("id").eq("project_id", project!.id)).data).toEqual([]);
   });
 
+  it("analytics: imports, post metrics and conversions are owner-only and can't attach to others' publications", async () => {
+    const disclosure = "#ได้รับค่าคอมมิชชัน";
+    const { data: prod } = await a.client.from("products").insert({ name: "สินค้า analytics", source: "manual" }).select("id").single();
+    const { data: project } = await a.client.from("content_projects").insert({ product_id: prod!.id, title: "an", platform: "tiktok", target_duration_s: 30 }).select("id").single();
+    const { data: sb } = await a.client
+      .from("storyboards")
+      .insert({ project_id: project!.id, version: 1, template_id: "quick_review", template_version: 1, disclosure, status: "approved", approved_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    const { data: job } = await admin.from("render_jobs").insert({ owner_id: a.id, storyboard_id: sb!.id, status: "completed" }).select("id").single();
+    const { data: out } = await admin.from("render_outputs").insert({ job_id: job!.id, owner_id: a.id, video_key: "x.mp4", report: { ok: true, checks: [] } }).select("id").single();
+    await admin.from("usage_events").insert({ owner_id: a.id, provider: "render", units: 10, unit: "video_seconds", est_cost_thb: 0.5, render_job_id: job!.id });
+    const { data: pub } = await a.client
+      .from("publications")
+      .insert({ render_output_id: out!.id, platform: "tiktok", caption: `c ${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure })
+      .select("id, tracking_code")
+      .single();
+    expect(pub!.tracking_code).toMatch(/^sa[0-9a-f]{10}$/);
+
+    const { data: imp } = await a.client.from("performance_imports").insert({ kind: "post_metrics", file_name: "m.csv" }).select("id").single();
+    const { data: cimp } = await a.client.from("performance_imports").insert({ kind: "affiliate_conversions", file_name: "c.csv" }).select("id").single();
+    expect((await a.client.from("post_metrics").insert({ import_id: imp!.id, publication_id: pub!.id, post_key: "tiktok:1", captured_on: "2026-10-20", views: 10 })).error).toBeNull();
+    // A metrics row can't hang off a conversions import.
+    expect((await a.client.from("post_metrics").insert({ import_id: cimp!.id, post_key: "tiktok:2", captured_on: "2026-10-20" })).error?.code).toBe("42501");
+    expect((await a.client.from("affiliate_conversions").insert({ import_id: cimp!.id, publication_id: pub!.id, order_id: "o1", status: "completed", commission_thb: 5 })).error).toBeNull();
+    // Same order again = conflict (re-imports upsert instead).
+    expect((await a.client.from("affiliate_conversions").insert({ import_id: cimp!.id, order_id: "o1", status: "pending" })).error?.code).toBe("23505");
+    const costs = (await a.client.rpc("project_costs")).data ?? [];
+    expect(costs.find((c) => c.project_id === project!.id)).toMatchObject({ cost_thb: 0.5, renders: 1 });
+
+    // B: sees nothing, can't use A's import or publication, can't claim A's orders.
+    for (const t of ["performance_imports", "post_metrics", "affiliate_conversions"] as const) expect((await b.client.from(t).select("id")).data).toEqual([]);
+    expect((await b.client.rpc("project_costs")).data).toEqual([]);
+    expect((await b.client.from("post_metrics").insert({ import_id: imp!.id, post_key: "x", captured_on: "2026-10-20" })).error?.code).toBe("42501");
+    const { data: bImp } = await b.client.from("performance_imports").insert({ kind: "affiliate_conversions", file_name: "b.csv" }).select("id").single();
+    expect((await b.client.from("affiliate_conversions").insert({ import_id: bImp!.id, publication_id: pub!.id, order_id: "o2", status: "completed" })).error?.code).toBe("42501");
+    expect((await b.client.from("affiliate_conversions").update({ commission_thb: 0 }).eq("order_id", "o1").select()).data).toEqual([]);
+    expect((await b.client.from("performance_imports").delete().eq("id", imp!.id).select()).data).toEqual([]);
+
+    // Deleting an import removes its rows; deleting the product keeps orders but unlinks them.
+    await a.client.from("performance_imports").delete().eq("id", imp!.id);
+    expect((await a.client.from("post_metrics").select("id").eq("post_key", "tiktok:1")).data).toEqual([]);
+    await a.client.from("products").delete().eq("id", prod!.id);
+    const { data: order } = await a.client.from("affiliate_conversions").select("publication_id").eq("order_id", "o1").single();
+    expect(order!.publication_id).toBeNull();
+    await a.client.from("performance_imports").delete().eq("id", cimp!.id);
+  });
+
   it("anonymous clients see nothing", async () => {
     const anon = createClient<Database>(URL, ANON, { auth: { persistSession: false } });
-    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications"] as const) {
+    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications", "performance_imports", "post_metrics", "affiliate_conversions"] as const) {
       const { data, error } = await anon.from(table as "products").select("*");
       expect(data ?? []).toEqual([]);
       if (error) expect(error.code).toBe("42501");

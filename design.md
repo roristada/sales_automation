@@ -471,6 +471,12 @@ Recorded per §15.7. Last updated 2026-10-20.
     with the post URL — the only way an item shows as published, with
     "บันทึกโดยคุณ" stated next to it. Posted items are kept; "ลบโพสต์แล้ว"
     records a takedown.
+-   **Analytics (§9.9).** `/analytics` leads with decisions, not
+    charts: confirmed commission split into "from videos" (tracking code
+    in Sub_id) and "unattributed", pending, and render cost; then a
+    per-video table (latest cumulative numbers with their date, cost,
+    net) and the imports. Missing numbers read "ไม่มีข้อมูล"; the copy
+    states that views are not sales.
 -   **Usage & limits (§9.10).** Settings adds today/month spend,
     30-day usage per provider and daily/monthly caps; the rate in use is
     stated, and the copy says free work is never blocked.

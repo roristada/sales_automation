@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { PLATFORMS, type Platform } from "@/features/content/templates";
+import { rematchPerformance } from "@/features/analytics/actions";
 import type { ActionResult } from "@/features/products/actions";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { checkPostUrl, checkPublication, composeCaption } from "./publishing";
@@ -168,6 +169,8 @@ export async function markPublished(id: string, input: PublishedInput): Promise<
     const message = dbError(error);
     return error.code === "23505" ? { ok: false, error: "ตรวจข้อมูลที่ไฮไลต์", fieldErrors: { external_url: message } } : { ok: false, error: message };
   }
+  // Numbers imported before the post URL was known can now be matched.
+  await rematchPerformance().catch(() => null);
   revalidate(id, pub.storyboard_id);
   return { ok: true, data: null };
 }

@@ -20,6 +20,79 @@ export type Database = {
   };
   public: {
     Tables: {
+      affiliate_conversions: {
+        Row: {
+          commission_thb: number | null;
+          created_at: string;
+          id: string;
+          import_id: string;
+          item_key: string;
+          item_name: string | null;
+          network: string;
+          order_id: string;
+          order_value_thb: number | null;
+          ordered_at: string | null;
+          owner_id: string;
+          publication_id: string | null;
+          raw_status: string | null;
+          status: string;
+          sub_ids: string[];
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          commission_thb?: number | null;
+          created_at?: string;
+          id?: string;
+          import_id: string;
+          item_key?: string;
+          item_name?: string | null;
+          network?: string;
+          order_id: string;
+          order_value_thb?: number | null;
+          ordered_at?: string | null;
+          owner_id?: string;
+          publication_id?: string | null;
+          raw_status?: string | null;
+          status: string;
+          sub_ids?: string[];
+          updated_at?: string;
+        };
+        Update: {
+          commission_thb?: number | null;
+          created_at?: string;
+          id?: string;
+          import_id?: string;
+          item_key?: string;
+          item_name?: string | null;
+          network?: string;
+          order_id?: string;
+          order_value_thb?: number | null;
+          ordered_at?: string | null;
+          owner_id?: string;
+          publication_id?: string | null;
+          raw_status?: string | null;
+          status?: string;
+          sub_ids?: string[];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_conversions_import_id_fkey";
+            columns: ["import_id"];
+            isOneToOne: false;
+            referencedRelation: "performance_imports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "affiliate_conversions_publication_id_fkey";
+            columns: ["publication_id"];
+            isOneToOne: false;
+            referencedRelation: "publications";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       assets: {
         Row: {
           ai_generated: boolean;
@@ -281,6 +354,119 @@ export type Database = {
             columns: ["product_id"];
             isOneToOne: true;
             referencedRelation: "research_products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      performance_imports: {
+        Row: {
+          created_at: string;
+          errors: NonNullable<Json>;
+          failed_rows: number;
+          file_name: string;
+          id: string;
+          kind: string;
+          matched_rows: number;
+          owner_id: string;
+          saved_rows: number;
+          total_rows: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          errors?: NonNullable<Json>;
+          failed_rows?: number;
+          file_name: string;
+          id?: string;
+          kind: string;
+          matched_rows?: number;
+          owner_id?: string;
+          saved_rows?: number;
+          total_rows?: number;
+        };
+        Update: {
+          created_at?: string;
+          errors?: NonNullable<Json>;
+          failed_rows?: number;
+          file_name?: string;
+          id?: string;
+          kind?: string;
+          matched_rows?: number;
+          owner_id?: string;
+          saved_rows?: number;
+          total_rows?: number;
+        };
+        Relationships: [];
+      };
+      post_metrics: {
+        Row: {
+          avg_watch_s: number | null;
+          captured_on: string;
+          comments: number | null;
+          created_at: string;
+          id: string;
+          import_id: string;
+          likes: number | null;
+          owner_id: string;
+          post_key: string;
+          post_url: string | null;
+          publication_id: string | null;
+          saves: number | null;
+          shares: number | null;
+          title: string | null;
+          views: number | null;
+          watch_time_s: number | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          avg_watch_s?: number | null;
+          captured_on: string;
+          comments?: number | null;
+          created_at?: string;
+          id?: string;
+          import_id: string;
+          likes?: number | null;
+          owner_id?: string;
+          post_key: string;
+          post_url?: string | null;
+          publication_id?: string | null;
+          saves?: number | null;
+          shares?: number | null;
+          title?: string | null;
+          views?: number | null;
+          watch_time_s?: number | null;
+        };
+        Update: {
+          avg_watch_s?: number | null;
+          captured_on?: string;
+          comments?: number | null;
+          created_at?: string;
+          id?: string;
+          import_id?: string;
+          likes?: number | null;
+          owner_id?: string;
+          post_key?: string;
+          post_url?: string | null;
+          publication_id?: string | null;
+          saves?: number | null;
+          shares?: number | null;
+          title?: string | null;
+          views?: number | null;
+          watch_time_s?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_metrics_import_id_fkey";
+            columns: ["import_id"];
+            isOneToOne: false;
+            referencedRelation: "performance_imports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_metrics_publication_id_fkey";
+            columns: ["publication_id"];
+            isOneToOne: false;
+            referencedRelation: "publications";
             referencedColumns: ["id"];
           },
         ];
@@ -551,6 +737,7 @@ export type Database = {
           scheduled_for: string | null;
           status: string;
           storyboard_id: string;
+          tracking_code: string;
           updated_at: string;
           withdrawn_at: string | null;
         };
@@ -573,6 +760,7 @@ export type Database = {
           scheduled_for?: string | null;
           status?: string;
           storyboard_id: string;
+          tracking_code?: string;
           updated_at?: string;
           withdrawn_at?: string | null;
         };
@@ -594,6 +782,7 @@ export type Database = {
           scheduled_for?: string | null;
           status?: string;
           storyboard_id?: string;
+          tracking_code?: string;
           updated_at?: string;
           withdrawn_at?: string | null;
         };
@@ -1162,6 +1351,14 @@ export type Database = {
         };
       };
       fail_exhausted_render_jobs: { Args: { stale_after?: string }; Returns: number };
+      project_costs: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          cost_thb: number;
+          project_id: string;
+          renders: number;
+        }[];
+      };
       spend_summary: {
         Args: { owner?: string };
         Returns: {

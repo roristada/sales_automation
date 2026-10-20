@@ -6,9 +6,12 @@ import { z } from "zod";
 import { PageHeader, SectionHeader } from "@/components/shared/page-header";
 import { Notice } from "@/components/shared/states";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { CopyButton } from "@/components/shared/copy-button";
 import { Button } from "@/components/ui/button";
+import type { ConversionStatus } from "@/features/analytics/csv";
+import { summarize } from "@/features/analytics/summary";
 import type { Platform } from "@/features/content/templates";
-import { formatDateTime } from "@/features/products/data-value";
+import { formatDate, formatDateTime } from "@/features/products/data-value";
 import { DeletePublicationButton, DetailsForm, MarkPublishedForm, ScheduleForm, SwitchRenderButton, WithdrawButton } from "@/features/publishing/publication-forms";
 import { checkPublication, PUBLICATION_BADGE, PUBLICATION_STATUS_LABEL, type PublicationStatus, getPublishingAdapter } from "@/features/publishing/publishing";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -39,6 +42,28 @@ export default async function PublicationPage({ params }: { params: Promise<{ id
     .order("created_at", { ascending: false })
     .limit(1);
   const isLatestRender = !newest?.[0] || newest[0].id === pub.output.id;
+
+  const [{ data: metrics }, { data: conversions }] = await Promise.all([
+    db.from("post_metrics").select("post_key, captured_on, views, likes, comments, shares, saves, avg_watch_s").eq("publication_id", pub.id).limit(1000),
+    db.from("affiliate_conversions").select("status, commission_thb, order_value_thb").eq("publication_id", pub.id).limit(5000),
+  ]);
+  const results = summarize({
+    publications: [{ id: pub.id, projectId: pub.project_id }],
+    metrics: (metrics ?? []).map((m) => ({
+      publicationId: pub.id,
+      postKey: m.post_key,
+      capturedOn: m.captured_on,
+      views: m.views,
+      likes: m.likes,
+      comments: m.comments,
+      shares: m.shares,
+      saves: m.saves,
+      avgWatchS: m.avg_watch_s,
+    })),
+    conversions: (conversions ?? []).map((c) => ({ publicationId: pub.id, status: c.status as ConversionStatus, commission: c.commission_thb, orderValue: c.order_value_thb })),
+    projectCosts: new Map(),
+  }).byPublication.get(pub.id)!;
+  const thb = (n: number) => new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", minimumFractionDigits: 2 }).format(n);
 
   const status = pub.status as PublicationStatus;
   const platform = pub.platform as Platform;
@@ -126,6 +151,54 @@ export default async function PublicationPage({ params }: { params: Promise<{ id
           <section aria-labelledby="caption-h">
             <SectionHeader id="caption-h" title="แคปชันและลิงก์" />
             <DetailsForm id={pub.id} posted={!unposted} captionLimit={adapter.captionLimit} initial={{ caption: pub.caption, affiliate_url: pub.affiliate_url ?? "", notes: pub.notes ?? "" }} />
+          </section>
+
+          <section aria-labelledby="results-h">
+            <SectionHeader id="results-h" title="การติดตามผล" description="ตัวเลขมาจากไฟล์ที่นำเข้าในหน้า Analytics เท่านั้น" />
+            <div className="flex flex-col gap-4 text-[13px]">
+              <div>
+                <p className="font-medium">รหัสติดตาม</p>
+                <p className="mb-2 text-muted-foreground">ใส่รหัสนี้ในช่อง Sub_id ตอนสร้างลิงก์ใน Shopee Affiliate แล้วใช้ลิงก์นั้นกับโพสต์นี้ คำสั่งซื้อที่มีรหัสนี้จะนับค่าคอมให้วิดีโอนี้</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="rounded-md border bg-surface-muted px-2 py-1 font-mono text-sm">{pub.tracking_code}</code>
+                  <CopyButton value={pub.tracking_code} label="คัดลอกรหัส" />
+                </div>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                {[
+                  ["ยอดดู", results.latest?.views],
+                  ["ถูกใจ", results.latest?.likes],
+                  ["ความคิดเห็น", results.latest?.comments],
+                  ["แชร์", results.latest?.shares],
+                ].map(([label, v]) => (
+                  <div key={label as string}>
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-semibold tabular-nums">{v == null ? <span className="font-normal text-muted-foreground">ไม่มีข้อมูล</span> : (v as number).toLocaleString("th-TH")}</dd>
+                  </div>
+                ))}
+                <div>
+                  <dt className="text-muted-foreground">ค่าคอมยืนยันแล้ว</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {conversions?.length ? thb(results.commission.completed.commission) : <span className="font-normal text-muted-foreground">ไม่มีข้อมูล</span>}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">คำสั่งซื้อ</dt>
+                  <dd className="tabular-nums">
+                    {conversions?.length ? (
+                      `ยืนยัน ${results.commission.completed.orders} · รอ ${results.commission.pending.orders} · ยกเลิก ${results.commission.cancelled.orders}`
+                    ) : (
+                      <span className="text-muted-foreground">ไม่มีข้อมูล</span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              {results.latest && (
+                <p className="text-xs text-muted-foreground">
+                  ยอดสะสม ณ {formatDate(results.latest.capturedOn)} (นำเข้า {results.latest.snapshots} ครั้ง)
+                </p>
+              )}
+            </div>
           </section>
         </div>
 

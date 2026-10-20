@@ -132,3 +132,16 @@ Not done: `tts_cache` (comes with a TTS provider).
 - [x] Tests — unit 90 ✅ (publishing 6), RLS 15 ✅ (publications), e2e 8 specs ✅ (M6: prepare → export → disclosure kept → schedule → wrong-platform URL refused → published → same platform opens the same record → withdraw → prepare again → delete unposted); migrations verified on a fresh shadow DB
 
 Not done in M6: posting through platform APIs (needs OAuth apps and platform approval per account) and post status read-back; those come as `PublishingAdapter.publish` + method `api`.
+
+## Milestone 7 — Analytics ✅ from CSV exports (2026-10-20)
+- [x] Migration `20261027000000_analytics.sql`: `publications.tracking_code` (per video, for Shopee Sub_id), `performance_imports`, `post_metrics` (cumulative totals per post per day, NULL = not in file), `affiliate_conversions` (order + item, status, commission, Sub_ids), `project_costs()`; RLS owner-only, rows must belong to the caller's own import of the right kind and (if matched) own publication
+- [x] Post metrics CSV (`src/features/analytics/csv.ts`): header detection EN/TH (TikTok Studio, YouTube Studio incl. "Content" ID / Total row / watch hours, Instagram, hand-made), durations `83` / `0:09` / `1:02:03`, BE dates; no date column → file's day (Bangkok); bad rows skipped with line + reason
+- [x] Matching (`post-key.ts`): post URL normalised per platform (TikTok `/video/<id>`, Shorts/youtu.be/watch?v, IG reel/p) or bare post ID; unmatched posts are stored but never counted for a video
+- [x] Shopee Affiliate conversion report CSV: order id + net commission required (net wins over item commission), status → completed / pending / cancelled / unknown, zone-less times = Thai time, Sub_id1–5 read; **attributed only when a Sub_id equals the video's tracking code**
+- [x] Re-import: same post + day replaces numbers; same order + item updates (pending → completed); delete an import removes its rows; "จับคู่ใหม่" and recording a post URL match rows imported earlier
+- [x] `/analytics`: confirmed commission (all) vs from videos vs unattributed, pending, render cost; per-video table (latest views as of date, likes, comments, shares, avg watch, confirmed commission + pending, cost, net = confirmed − cost when the content has one post); imports list; nothing imported → "ไม่มีข้อมูล", never 0
+- [x] Publication page: "การติดตามผล" with tracking code (copy) and its attributed results
+- [x] Tests — unit 102 ✅ (analytics 12), RLS 16 ✅, e2e 9 specs ✅ (M7: metrics matched by URL, unmatched excluded, attributed vs unattributed vs pending, cost and net, re-import updates order, delete import)
+
+Not done in M7: platform/Shopee APIs (no access) — numbers come only from files; view-to-sale attribution beyond the tracking code (not measurable from these exports).
+

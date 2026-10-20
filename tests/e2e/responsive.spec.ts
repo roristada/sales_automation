@@ -16,12 +16,14 @@ test("mobile navigation and layout", async ({ page }) => {
   // Desktop sidebar hidden; drawer opens and navigates.
   await page.getByRole("button", { name: "เปิดเมนู" }).click();
   const drawer = page.getByRole("dialog");
-  await expect(drawer.getByText("เร็วๆ นี้").first()).toBeVisible();
+  // Every module is live now: no "เร็วๆ นี้" placeholders left.
+  await expect(drawer.getByRole("link", { name: "Analytics" })).toBeVisible();
+  await expect(drawer.getByText("เร็วๆ นี้")).toHaveCount(0);
   await drawer.getByRole("link", { name: "ค้นหาสินค้า" }).click();
   await expect(page).toHaveURL(/\/research/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  for (const path of ["/dashboard", "/research", "/research/sources", "/research/trends", "/content", "/content/new", "/studio", "/videos", "/assets", "/publishing", "/products", "/products/new", "/products/import", "/settings"]) {
+  for (const path of ["/dashboard", "/research", "/research/sources", "/research/trends", "/content", "/content/new", "/studio", "/videos", "/assets", "/publishing", "/analytics", "/products", "/products/new", "/products/import", "/settings"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
