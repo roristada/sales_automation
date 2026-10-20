@@ -28,11 +28,11 @@ const STAGE: Record<string, string> = {
   checking: "ตรวจคุณภาพไฟล์",
   saving: "บันทึกไฟล์",
 };
-/** A queued job nobody picked up after this long probably means the worker isn't running. */
+/** Without a heartbeat answer: a queued job nobody picked up after this long probably means no worker. */
 const WORKER_HINT_AFTER_MS = 15_000;
 
 /** Render / rerender / cancel, with live status (polls while a job is active). */
-export function RenderPanel({ storyboardId, active, hasOutput }: { storyboardId: string; active: ActiveJob | null; hasOutput: boolean }) {
+export function RenderPanel({ storyboardId, active, hasOutput, workerOnline }: { storyboardId: string; active: ActiveJob | null; hasOutput: boolean; workerOnline: boolean | null }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export function RenderPanel({ storyboardId, active, hasOutput }: { storyboardId:
     });
 
   if (active) {
-    const waiting = active.status === "queued" && now - Date.parse(active.createdAt) > WORKER_HINT_AFTER_MS;
+    const waiting = active.status === "queued" && (workerOnline === null ? now - Date.parse(active.createdAt) > WORKER_HINT_AFTER_MS : !workerOnline);
     const pct = Math.round(active.progress * 100);
     return (
       <div className="flex flex-col gap-3" aria-live="polite">

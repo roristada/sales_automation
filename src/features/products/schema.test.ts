@@ -89,6 +89,11 @@ describe("csv mapping", () => {
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.errors.map((e) => e.field).sort()).toEqual(["name", "price"]);
   });
+
+  it("reads back cells our export escaped against spreadsheet formulas", () => {
+    const row = mapRow({ "Product Name": "'=HYPERLINK(1)", Notes: "'-50% วันนี้", Description: "'ok" }, { name: "Product Name", notes: "Notes", description: "Description" });
+    expect(row).toEqual({ ok: true, id: null, value: expect.objectContaining({ name: "=HYPERLINK(1)", notes: "-50% วันนี้", description: "'ok" }) });
+  });
 });
 
 describe("System ID column", () => {

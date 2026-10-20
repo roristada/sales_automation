@@ -1,6 +1,6 @@
 # Phase 0 Plan — AI Affiliate Automation Platform
 
-อัปเดต: 2026-10-20 · สถานะ: **Phase 0 เสร็จ, Milestone 1 เสร็จและทดสอบแล้ว, Milestone 2 เสร็จ ยกเว้น Shopee API (รอสิทธิ์), Milestone 3 เสร็จ, Milestone 4 เสร็จ (ยังไม่มีเสียงพากย์), Milestone 5 เสร็จ, Milestone 6 เสร็จ (เผยแพร่แบบโพสต์เอง ยังไม่มี API ของแพลตฟอร์ม), Milestone 7 เสร็จ (Analytics จากไฟล์ CSV)** (ดู [CHECKLIST.md](CHECKLIST.md))
+อัปเดต: 2026-10-21 · สถานะ: **Phase 0 เสร็จ, Milestone 1 เสร็จและทดสอบแล้ว, Milestone 2 เสร็จ ยกเว้น Shopee API (รอสิทธิ์), Milestone 3 เสร็จ, Milestone 4 เสร็จ (ยังไม่มีเสียงพากย์), Milestone 5 เสร็จ, Milestone 6 เสร็จ (เผยแพร่แบบโพสต์เอง ยังไม่มี API ของแพลตฟอร์ม), Milestone 7 เสร็จ (Analytics จากไฟล์ CSV), Milestone 8 เสร็จในส่วนที่ทำบนเครื่องได้ (security review, monitoring, backup, คู่มือ deploy — ยังไม่ได้ deploy ขึ้น cloud)** (ดู [CHECKLIST.md](CHECKLIST.md))
 
 ---
 
@@ -139,7 +139,7 @@ Migration ทั้งหมดอยู่ใน `supabase/migrations/` ทด�
 | M5 Workflow Automation | queue, retries, assets, usage, cost limits, approval | idempotency; bounded retry; เกิน cap → หยุดพร้อมข้อความ |
 | M6 Publishing ✅ (manual) | manual export (MP4/caption/thumbnail/affiliate URL), บันทึกสถานะเผยแพร่เอง, platform adapters เมื่อมีสิทธิ์ | ไม่โพสต์ซ้ำ; ไม่มี auto-post ถ้าไม่มี OAuth/สิทธิ์ |
 | M7 Analytics ✅ (CSV) | CSV import ผลลัพธ์, metrics ตามที่มีจริง | แยก attributed conversions จากยอดรวม; cost ต่อวิดีโอ |
-| M8 Production readiness | security review, monitoring, backup, deploy docs | — |
+| M8 Production readiness ✅ (local) | security review, monitoring, backup, deploy docs | security headers + ช่องโหว่ที่พบแก้แล้วพร้อม test; สถานะ worker/คิว/ดิสก์ + `/api/health`; backup ที่ทดสอบกู้คืนทุกครั้ง + restore; DEPLOY.md/SECURITY.md |
 
 ## 8. Dependencies และ credentials ที่ต้องเตรียม
 

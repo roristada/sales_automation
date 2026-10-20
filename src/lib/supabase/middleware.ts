@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /api/health is for uptime monitors; it reports only up/down, never user data.
+const PUBLIC_PATHS = ["/login", "/auth", "/api/health"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -33,7 +34,7 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
 
-  if (!user && path.startsWith("/api/")) {
+  if (!user && !isPublic && path.startsWith("/api/")) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 

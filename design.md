@@ -480,6 +480,11 @@ Recorded per §15.7. Last updated 2026-10-20.
 -   **Usage & limits (§9.10).** Settings adds today/month spend,
     30-day usage per provider and daily/monthly caps; the rate in use is
     stated, and the copy says free work is never blocked.
+-   **System status (§9.10 Storage and rendering).** Settings adds
+    "สถานะระบบ": render worker (from its heartbeat, with last beat and
+    how to start it), the user's render queue and failed renders in
+    24 h, and free disk where videos are stored. Each row is a label
+    plus a chip, so the state is never colour-only.
 -   **Product Detail tabs (§9.3).** Only tabs with real data are shown:
     Overview, and Source & data history. Trend signals, content ideas,
     scripts/videos and performance tabs are added when their milestones

@@ -36,6 +36,8 @@ Ports are in the 553xx range so this project can run beside other local Supabase
 | `npm run worker` | Render worker — keep it running in its own terminal to turn queued renders into MP4s |
 | `npm run worker -- --drain` | Render everything in the queue, then exit |
 | `npm run remotion:studio` | Remotion Studio for working on the video template (`src/remotion/`) |
+| `npm run backup` | Back up the local DB + stored files to `backups/<time>/`, test-restored before it reports success (`-- --keep 7` prunes) |
+| `npm run restore -- backups/<time>` | Restore a backup into a DB with no accounts yet — see docs/DEPLOY.md |
 
 First e2e run: `npx playwright install chromium`.
 
@@ -64,6 +66,10 @@ Each render is logged in `usage_events`; set `RENDER_COST_THB_PER_VIDEO_SECOND` 
 
 Without a TTS provider videos are silent (with a silent AAC track) and timed from a Thai speech estimate.
 Remotion runs under its Free License (individual use) — see docs/LICENSING.md; set `REMOTION_LICENSE_KEY` if that changes.
+
+## Production, monitoring, backup
+
+See [DEPLOY.md](DEPLOY.md) (running in production, Settings → สถานะระบบ, `/api/health`, backup/restore) and [SECURITY.md](SECURITY.md).
 
 ## Cloud Supabase (when deploying)
 

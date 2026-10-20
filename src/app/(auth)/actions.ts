@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { isSignupDisabled } from "@/lib/env";
 import { safeNext } from "@/lib/safe-redirect";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -18,9 +19,6 @@ export interface AuthFormState {
   fieldErrors?: Partial<Record<"email" | "password", string>>;
   email?: string;
 }
-
-/** Only allow same-site relative redirects. */
-
 
 function parse(formData: FormData) {
   const result = credentialsSchema.safeParse({
@@ -54,6 +52,7 @@ export async function signIn(_prev: AuthFormState, formData: FormData): Promise<
 }
 
 export async function signUp(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  if (isSignupDisabled()) return { error: "ปิดการสร้างบัญชีใหม่แล้ว" };
   const parsed = parse(formData);
   if (!parsed.data) return parsed.state;
   const supabase = await createClient();

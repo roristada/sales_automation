@@ -45,11 +45,15 @@ export async function GET(request: Request) {
     if (data.length < PAGE) break;
   }
 
-  const csv = Papa.unparse({
-    fields: COLUMNS.map(([h]) => h),
-    // Dates as YYYY-MM-DD so spreadsheets and the importer both read them.
-    data: rows.map((r) => COLUMNS.map(([, c]) => (c === "retrieved_at" && r[c] ? String(r[c]).slice(0, 10) : (r[c] ?? "")))),
-  });
+  const csv = Papa.unparse(
+    {
+      fields: COLUMNS.map(([h]) => h),
+      // Dates as YYYY-MM-DD so spreadsheets and the importer both read them.
+      data: rows.map((r) => COLUMNS.map(([, c]) => (c === "retrieved_at" && r[c] ? String(r[c]).slice(0, 10) : (r[c] ?? "")))),
+    },
+    // Imported names/notes are untrusted: a cell like =HYPERLINK(…) must stay text in Excel/Sheets.
+    { escapeFormulae: true },
+  );
   const name = `products-${filters.freshness ?? "all"}${filters.source ? `-${filters.source}` : ""}-${new Date().toISOString().slice(0, 10)}.csv`;
   // BOM so Excel opens Thai text as UTF-8.
   return new Response(`﻿${csv}`, {

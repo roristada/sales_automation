@@ -4,12 +4,11 @@
 
 ---
 
-## สถานะตอนพัก (2026-10-20)
+## สถานะตอนพัก (2026-10-21)
 
-- **เสร็จ:** Phase 0, M1 Foundation, M2 Product Research (ยกเว้น Shopee API), M3 Content Planning, M4 Video Engine (ยังไม่มีเสียงพากย์), M5 Workflow Automation
-- **ยังไม่เริ่ม:** M6 Publishing, M7 Analytics, M8 Production readiness
+- **เสร็จ:** Phase 0, M1 Foundation, M2 Product Research (ยกเว้น Shopee API), M3 Content Planning, M4 Video Engine (ยังไม่มีเสียงพากย์), M5 Workflow Automation, M6 Publishing (โพสต์เอง), M7 Analytics (CSV), M8 Production readiness (ส่วนที่ทำบนเครื่องได้)
 - **รอคนตัดสินใจ/ข้อมูลจากภายนอก:** สิทธิ์ Shopee Affiliate Open API (TH), ผู้ให้บริการ TTS, บัญชี Anthropic API (ถ้าจะให้ AI เขียนผ่านปุ่มโดยตรง), Supabase cloud project (ตอน deploy)
-- **ผลตรวจล่าสุด:** lint ✅ typecheck ✅ build ✅ · unit 80 ✅ · RLS 14 ✅ · e2e 7 specs ✅ (รัน 2 รอบ) · `supabase db diff` ไม่มี drift ของตาราง/constraint
+- **ผลตรวจล่าสุด:** lint ✅ typecheck ✅ build ✅ · unit 105 ✅ · RLS 18 ✅ · e2e 10 specs ✅ · `npm audit --omit=dev` 0 · backup + restore ทดสอบจริงแล้ว
 - **สภาพแวดล้อม:** ใช้ Supabase local เท่านั้น (Docker, พอร์ต 553xx), FFmpeg 9.0.2 ติดตั้งผ่าน winget, Remotion 4.0.537 (Free License), Chrome Headless Shell ของ Remotion ดาวน์โหลดแล้ว
 
 ### กลับมาทำต่อ
@@ -18,6 +17,7 @@
 npm run db:start                 # Docker ต้องเปิดอยู่
 npm run dev                      # http://localhost:3000
 npm run worker                   # terminal ที่สอง — ต้องเปิดไว้ถึงจะ render วิดีโอได้
+npm run backup                   # สำรองข้อมูล (ควรตั้งเวลาทุกวัน — docs/DEPLOY.md)
 ```
 
 ถ้า terminal เก่าหา `ffprobe` ไม่เจอ ให้เปิด terminal ใหม่ (PATH ถูกเพิ่มหลังติดตั้ง) หรือตั้ง `FFPROBE_PATH`
@@ -26,9 +26,9 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 
 ### ขั้นต่อไปที่แนะนำ
 
-1. **M6 Publishing** — ส่งออกชุดโพสต์ (MP4 + แคปชันพร้อม disclosure + ภาพปก + ลิงก์ affiliate), บันทึกสถานะโพสต์เอง (`publications`), ไม่มี auto-post จนกว่าจะมี OAuth/สิทธิ์
+1. **ใช้งานจริง** — ทดลองทำวิดีโอ → โพสต์ → นำเข้าผล แล้วปรับตามไฟล์ export จริงของ Shopee/TikTok (หัวคอลัมน์ยังเดาจากรูปแบบที่พบบ่อย)
 2. **เสียงพากย์** — เลือก Google Cloud TTS หรือ Azure Speech → ทำ `TtsProvider` + `tts_cache`, เวลาในวิดีโอใช้ความยาวเสียงจริง (`audioSeconds` ใน timeline รองรับแล้ว)
-3. M7 Analytics, M8 Production readiness (security review, backup, deploy)
+3. **Deploy** เมื่อต้องการเปิด 24 ชม. หรือเข้าจากมือถือ — ทำตาม docs/DEPLOY.md (ตั้ง `BACKUP_DIR` ไปไดรฟ์อื่นก่อน)
 
 ---
 
@@ -51,6 +51,9 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 | เผยแพร่ | โพสต์เองแล้ววางลิงก์โพสต์กลับมา; ไม่มี auto-post | TikTok/Meta/YouTube ต้องใช้ OAuth + ผ่านการตรวจแอปก่อนโพสต์สาธารณะได้; สถานะ “เผยแพร่แล้ว” มาจากลิงก์ที่ผู้ใช้บันทึกเท่านั้น (design.md §9.8) |
 | กันโพสต์ซ้ำ | 1 รายการต่อคอนเทนต์ต่อแพลตฟอร์ม (ไม่นับที่ลบโพสต์แล้ว) + ลิงก์โพสต์ห้ามซ้ำ | render ใหม่ของคอนเทนต์เดิม = วิดีโอเดิม; อยากโพสต์ใหม่ให้บันทึกว่าลบโพสต์เก่าก่อน |
 | Attribution ค่าคอม | นับให้วิดีโอเฉพาะคำสั่งซื้อที่มีรหัสติดตามของวิดีโอใน Sub_id | วิธีเดียวที่พิสูจน์ได้จากรายงาน Shopee; ที่เหลือนับในยอดรวม “ไม่ระบุวิดีโอ” ไม่เดา |
+| Deploy | เครื่องตัวเอง + Supabase local ก่อน (มือถือผ่าน Tailscale); ไม่เปิดสู่อินเทอร์เน็ตจนกว่าจะปิดสมัคร + HTTPS | งบ 0–1,000 บาท; ไฟล์อยู่บนดิสก์ แอปกับ worker ต้องอยู่เครื่องเดียวกัน |
+| Backup | `pg_dump` (public + บัญชี) + copy ไฟล์ ทดสอบกู้คืนลง DB ชั่วคราวทุกครั้ง; restore เฉพาะ DB ว่าง | backup ที่ไม่เคยทดสอบกู้คืนเชื่อไม่ได้; กันการ restore ทับข้อมูลจริง (เคยเสียข้อมูลจาก db reset) |
+| Monitoring | heartbeat ของ worker ใน Postgres + หน้า สถานะระบบ + `/api/health` | ไม่ต้องเพิ่มบริการ; ตอบคำถามที่เจอจริงบ่อยสุด “ทำไมงานค้างรอคิว” |
 | ผลโพสต์ | นำเข้า CSV ที่ export เอง เก็บเป็นยอดสะสมรายวัน ใช้ค่าล่าสุด | ยังไม่มีสิทธิ์ API ของแพลตฟอร์ม; export เป็นยอดสะสมจึงห้ามบวกข้ามวัน |
 
 ---
@@ -72,6 +75,9 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 | **Security review:** ปลอม `storage_key` ของ asset ผ่าน API ให้ชี้ไฟล์ของผู้ใช้อื่นแล้วดาวน์โหลด | insert ผ่าน PostgREST ได้โดยไม่ตรวจรูปแบบ key | migration `20261025000000_asset_key_guard.sql` บังคับ key = `<owner>/<id>/original.<ext>` + mime ที่รับ; route ตรวจ prefix ซ้ำ; มี RLS test |
 | Upload ใหญ่ผ่าน middleware ถูกตัด | Next 15 buffer body ใน middleware สูงสุด 10 MB | `experimental.middlewareClientMaxBodySize: "210mb"` |
 | render ล้ม `Jest worker encountered 2 child process exceptions` (stack ชี้ไป `remi_shop`) | dev server ของ remi_shop ฟัง `0.0.0.0:3000`; Remotion ตรวจพอร์ตเฉพาะ 127.0.0.1 ซึ่ง Windows ยอมให้ bind ซ้อน → Chrome โหลดแอปอื่นแทน bundle | worker หาพอร์ตว่างจริงจาก OS แล้วส่ง `port` ให้ Remotion ทุกครั้ง |
+| สถานะ worker แสดง “ยังไม่เคยเปิด” หลังปิด worker ปกติ | worker ลบแถว heartbeat ตอนหยุด | รวมเป็น “ไม่ได้เปิด” สถานะเดียว |
+| e2e M8 ถูก skip/สุ่มพัง | spec อื่นรัน worker จริงพร้อมกัน สถานะ worker ส่วนกลางจึงบังคับให้ offline ไม่ได้ | ตรวจความสอดคล้องของคำตอบแทน แล้วเพิ่ม heartbeat ของ test เองเพื่อตรวจ online |
+| **M8 security review:** ไม่มี security headers, CSV formula injection, `javascript:` URL ผ่าน API, ใครก็สมัครได้, postcss มีช่องโหว่ | — | ดู docs/SECURITY.md |
 | สิทธิ์ UPDATE ทั้งตาราง `publications` ยังอยู่แม้ grant รายคอลัมน์ | default privileges ของ Supabase ให้ทุกสิทธิ์กับ `authenticated` | `revoke update` ก่อน grant รายคอลัมน์ (แบบเดียวกับ `assets`); มี RLS test |
 
 ---
@@ -90,3 +96,7 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 - security review รอบสอง: redirect ที่ normalize แล้วกลายเป็น `//evil.com` (`/.//evil.com`, `/%2e//…`) → ตรวจผลลัพธ์หลัง normalize ซ้ำ; ดาวน์โหลดรูปใช้ timeout แบบ idle (เซิร์ฟเวอร์ส่งทีละไบต์ค้างได้) → เปลี่ยนเป็นเส้นตายรวมด้วย `AbortSignal.timeout`
 - M6: ตาราง `publications` + หน้าเผยแพร่ (ชุดไฟล์ + แคปชัน + ลิงก์, ตั้งเวลาแบบเตือน, บันทึกลิงก์โพสต์, ลบโพสต์/โพสต์ใหม่), adapter ของ 3 แพลตฟอร์มแสดง “ยังไม่เชื่อมต่อ”; แก้พอร์ตชนของ Remotion
 - M7: Analytics จาก CSV (ผลโพสต์ + รายงาน Conversion ของ Shopee), รหัสติดตามต่อวิดีโอ, แยกค่าคอมที่มาจากวิดีโอออกจากยอดรวม, ค่าใช้จ่ายและสุทธิต่อวิดีโอ
+
+### 2026-10-21
+
+- M8: security review (headers, CSV formula escaping, DB URL scheme checks, `DISABLE_SIGNUP`, postcss override) → docs/SECURITY.md; worker heartbeat + Settings “สถานะระบบ” + `/api/health`; `npm run backup` (ทดสอบกู้คืนทุกครั้ง) / `npm run restore` (ทดสอบกู้คืนจริงลง DB ชั่วคราวแล้ว); docs/DEPLOY.md

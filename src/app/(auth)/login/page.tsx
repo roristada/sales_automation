@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { SetupRequired } from "@/components/shared/states";
-import { isSupabaseConfigured } from "@/lib/env";
+import { isSignupDisabled, isSupabaseConfigured } from "@/lib/env";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "เข้าสู่ระบบ" };
@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               ลิงก์เข้าสู่ระบบไม่ถูกต้องหรือหมดอายุ กรุณาลองใหม่
             </p>
           )}
-          {isSupabaseConfigured() ? <LoginForm next={next} /> : <SetupRequired feature="การเข้าสู่ระบบ" />}
+          {isSupabaseConfigured() ? <LoginForm next={next} allowSignup={!isSignupDisabled()} /> : <SetupRequired feature="การเข้าสู่ระบบ" />}
         </div>
       </div>
     </main>

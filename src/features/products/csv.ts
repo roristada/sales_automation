@@ -77,6 +77,9 @@ export type MappedRow =
   | { ok: true; value: ProductInput; id: string | null }
   | { ok: false; errors: RowError[] };
 
+/** Undoes the `'` our export adds before =, +, -, @ so spreadsheets don't run cell text as a formula. */
+const unescapeFormula = (v: unknown) => (typeof v === "string" && /^'[=+\-@\t\r]/.test(v) ? v.slice(1) : v);
+
 const systemId = z.preprocess((v) => (typeof v === "string" ? v.trim() || null : (v ?? null)), z.uuid({ error: "รหัสในระบบไม่ถูกต้อง" }).nullable());
 
 /** Applies the mapping to one raw CSV row and validates it with the shared product schema. */
@@ -84,7 +87,7 @@ export function mapRow(raw: Record<string, unknown>, mapping: ColumnMapping): Ma
   const candidate: Record<string, unknown> = {};
   for (const { key } of CSV_FIELDS) {
     const header = mapping[key];
-    if (header !== undefined && key !== "id") candidate[key] = raw[header];
+    if (header !== undefined && key !== "id") candidate[key] = unescapeFormula(raw[header]);
   }
   const parsed = productInputSchema.safeParse(candidate);
   const id = systemId.safeParse(mapping.id === undefined ? null : raw[mapping.id]);

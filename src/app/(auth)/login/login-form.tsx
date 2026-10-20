@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, allowSignup }: { next?: string; allowSignup: boolean }) {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [signInState, signInAction, signInPending] = useActionState<AuthFormState, FormData>(signIn, {});
   const [signUpState, signUpAction, signUpPending] = useActionState<AuthFormState, FormData>(signUp, {});
@@ -73,16 +73,18 @@ export function LoginForm({ next }: { next?: string }) {
         {pending ? "กรุณารอสักครู่…" : isSignIn ? "เข้าสู่ระบบ" : "สร้างบัญชี"}
       </Button>
 
-      <p className="text-center text-[13px] text-muted-foreground">
-        {isSignIn ? "ยังไม่มีบัญชี?" : "มีบัญชีแล้ว?"}{" "}
-        <button
-          type="button"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-          onClick={() => setMode(isSignIn ? "sign-up" : "sign-in")}
-        >
-          {isSignIn ? "สร้างบัญชี" : "เข้าสู่ระบบ"}
-        </button>
-      </p>
+      {allowSignup && (
+        <p className="text-center text-[13px] text-muted-foreground">
+          {isSignIn ? "ยังไม่มีบัญชี?" : "มีบัญชีแล้ว?"}{" "}
+          <button
+            type="button"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+            onClick={() => setMode(isSignIn ? "sign-up" : "sign-in")}
+          >
+            {isSignIn ? "สร้างบัญชี" : "เข้าสู่ระบบ"}
+          </button>
+        </p>
+      )}
     </form>
   );
 }

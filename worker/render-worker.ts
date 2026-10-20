@@ -49,6 +49,8 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 
 const WORKER_ID = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
 const POLL_MS = 2000;
+// worker_status() treats a worker as offline after 45 s without a beat.
+const HEARTBEAT_MS = 15_000;
 const DRAIN = process.argv.includes("--drain");
 // Free License: individuals / companies with up to 3 employees (docs/LICENSING.md).
 const LICENSE_KEY = process.env.REMOTION_LICENSE_KEY || "free-license";
@@ -355,6 +357,23 @@ async function processJob(job: Tables<"render_jobs">) {
 }
 
 // ---------------------------------------------------------------------------
+// Heartbeat (monitoring: Settings → สถานะระบบ, /api/health)
+// ---------------------------------------------------------------------------
+
+let busy = false;
+async function beat() {
+  const { error } = await db.from("worker_heartbeats").upsert({ worker_id: WORKER_ID, last_seen: new Date().toISOString(), busy });
+  if (error) log(null, `ส่ง heartbeat ไม่สำเร็จ: ${error.message}`);
+}
+
+async function startHeartbeat() {
+  // Rows left by workers that crashed instead of stopping cleanly.
+  await db.from("worker_heartbeats").delete().lt("last_seen", new Date(Date.now() - 86_400_000).toISOString());
+  await beat();
+  setInterval(() => void beat(), HEARTBEAT_MS).unref();
+}
+
+// ---------------------------------------------------------------------------
 // Loop
 // ---------------------------------------------------------------------------
 
@@ -367,15 +386,22 @@ process.on("SIGINT", () => {
 
 async function main() {
   log(null, `render worker ${WORKER_ID} เริ่มทำงาน`);
+  await startHeartbeat();
   while (!stopping) {
     await db.rpc("fail_exhausted_render_jobs");
     const { data, error } = await db.rpc("claim_render_job", { worker: WORKER_ID });
     if (error) log(null, `ดึงงานไม่สำเร็จ: ${error.message}`);
     const job = data?.[0];
-    if (job) await processJob(job);
+    if (job) {
+      busy = true;
+      void beat();
+      await processJob(job);
+      busy = false;
+    }
     else if (DRAIN) break;
     else await new Promise((r) => setTimeout(r, POLL_MS));
   }
+  await db.from("worker_heartbeats").delete().eq("worker_id", WORKER_ID);
   log(null, "หยุดแล้ว");
 }
 

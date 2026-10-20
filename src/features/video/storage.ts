@@ -53,6 +53,11 @@ export class LocalDiskStorage implements StorageAdapter {
   }
 }
 
+/** Folder of the local disk store (also what backups copy). */
+export function storageRoot(): string {
+  return path.resolve(process.env.RENDER_STORAGE_DIR || "storage/renders");
+}
+
 export function getStorage(): StorageAdapter {
-  return new LocalDiskStorage(path.resolve(process.env.RENDER_STORAGE_DIR || "storage/renders"));
+  return new LocalDiskStorage(storageRoot());
 }

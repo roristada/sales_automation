@@ -1264,6 +1264,28 @@ export type Database = {
           },
         ];
       };
+      worker_heartbeats: {
+        Row: {
+          busy: boolean;
+          last_seen: string;
+          started_at: string;
+          worker_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          busy?: boolean;
+          last_seen?: string;
+          started_at?: string;
+          worker_id: string;
+        };
+        Update: {
+          busy?: boolean;
+          last_seen?: string;
+          started_at?: string;
+          worker_id?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       product_freshness: {
@@ -1367,6 +1389,14 @@ export type Database = {
         }[];
       };
       storyboard_is_approved: { Args: { sb: string }; Returns: boolean };
+      worker_status: {
+        Args: { alive_within?: string };
+        Returns: {
+          busy: number;
+          last_seen: string;
+          online: number;
+        }[];
+      };
     };
     Enums: {
       product_source: "manual" | "csv" | "shopee_affiliate" | "tiktok_shop";

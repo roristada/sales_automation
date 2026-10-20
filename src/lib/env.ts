@@ -12,3 +12,11 @@ export function getSupabasePublicEnv(): { url: string; anonKey: string } | null 
 export function isSupabaseConfigured(): boolean {
   return getSupabasePublicEnv() !== null;
 }
+
+/**
+ * `DISABLE_SIGNUP=true` hides and refuses sign-up in the app once your own account exists. Also turn
+ * off sign-ups in Supabase Auth — the anon key can call the sign-up API directly (docs/DEPLOY.md).
+ */
+export function isSignupDisabled(): boolean {
+  return /^(1|true|yes)$/i.test(process.env.DISABLE_SIGNUP ?? "");
+}

@@ -405,6 +405,29 @@ ${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure, ...e
     await a.client.from("performance_imports").delete().eq("id", cimp!.id);
   });
 
+  it("worker heartbeats: written by the worker only; users and anon see just online/offline", async () => {
+    const id = `rls-test-${Date.now()}`;
+    expect((await admin.from("worker_heartbeats").insert({ worker_id: id, busy: true })).error).toBeNull();
+    const anon = createClient<Database>(URL, ANON, { auth: { persistSession: false } });
+    for (const c of [a.client, anon]) {
+      expect((await c.from("worker_heartbeats").select("*")).data ?? []).toEqual([]);
+      expect((await c.from("worker_heartbeats").insert({ worker_id: `${id}-x` })).error?.code).toBe("42501");
+      const { data } = await c.rpc("worker_status");
+      expect(data![0].online).toBeGreaterThanOrEqual(1);
+      expect(Object.keys(data![0]).sort()).toEqual(["busy", "last_seen", "online"]);
+    }
+    await admin.from("worker_heartbeats").delete().eq("worker_id", id);
+  });
+
+  it("links rendered as href must be http(s), even when written straight through the API", async () => {
+    for (const url of ["javascript:alert(1)", "data:text/html,x", " javascript:alert(1)"]) {
+      expect((await a.client.from("products").update({ product_url: url }).eq("id", productId)).error?.code).toBe("23514");
+      expect((await a.client.from("products").update({ affiliate_url: url }).eq("id", productId)).error?.code).toBe("23514");
+      expect((await a.client.from("product_facts").insert({ product_id: productId, label: "x", value: "y", source_url: url })).error?.code).toBe("23514");
+    }
+    expect((await a.client.from("products").update({ product_url: "HTTPS://example.test/p" }).eq("id", productId)).error).toBeNull();
+  });
+
   it("anonymous clients see nothing", async () => {
     const anon = createClient<Database>(URL, ANON, { auth: { persistSession: false } });
     for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications", "performance_imports", "post_metrics", "affiliate_conversions"] as const) {

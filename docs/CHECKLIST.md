@@ -145,3 +145,13 @@ Not done in M6: posting through platform APIs (needs OAuth apps and platform app
 
 Not done in M7: platform/Shopee APIs (no access) — numbers come only from files; view-to-sale attribution beyond the tracking code (not measurable from these exports).
 
+## Milestone 8 — Production readiness ✅ (local; cloud deploy waits for a Supabase project) (2026-10-21)
+- [x] Security review of M1–M7 (`docs/SECURITY.md`): security headers (`frame-ancestors 'none'`/XFO, nosniff, Referrer-Policy, Permissions-Policy, HSTS in production, no `X-Powered-By`); CSV export escapes formulas and import reads them back; DB-level `http(s)://` checks on every link rendered as href (migration `20261029000000_url_scheme_guard.sql`); `DISABLE_SIGNUP`; `postcss` override → `npm audit --omit=dev` 0
+- [x] Monitoring: migration `20261028000000_monitoring.sql` — `worker_heartbeats` (service role only) + `worker_status()` (online/busy/last seen only); worker beats every 15 s, removes its row on clean stop
+- [x] Settings → "สถานะระบบ": worker state + last beat, the user's queue (queued/processing/oldest), failed renders in 24 h (→ /videos), free disk on the storage drive (warn < 2 GB); Video Studio says "worker not running" from the heartbeat instead of guessing after 15 s
+- [x] `GET /api/health` (public): 200 `{status, db, worker}` when the DB answers, 503 otherwise; `?worker=required` also fails when no worker is alive
+- [x] `npm run backup`: `pg_dump` of public + `auth.users`/`auth.identities` and a copy of stored files, **test-restored into a scratch DB every time** (row counts in `manifest.json`), `--keep N`, `BACKUP_DIR`; `npm run restore`: only into a DB with no accounts and the same migration, single transaction, files copied without overwriting — verified end-to-end into a scratch database (all 26 tables' counts match, 170 files)
+- [x] `docs/DEPLOY.md`: architecture limits (app + worker on one machine while storage is local disk), options A–D with cost, production run + autostart on Windows, Tailscale for phone access, pre-exposure checklist, moving to Supabase cloud, monitoring, backup/restore runbook
+- [x] Tests — unit 105 ✅, RLS 18 ✅ (heartbeats, URL schemes), e2e 10 specs ✅ (M8: headers, health public + consistent with worker, heartbeat → online, Settings status)
+
+Not done in M8: an actual cloud deployment (needs your Supabase project / host); object storage for files (needed before splitting app and worker across machines); off-machine copy of backups (choose a drive/cloud folder for `BACKUP_DIR`).

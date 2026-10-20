@@ -16,7 +16,9 @@
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
     "test:e2e": "playwright test",
     "worker": "tsx worker/render-worker.ts",
-    "remotion:studio": "remotion studio src/remotion/index.ts"
+    "remotion:studio": "remotion studio src/remotion/index.ts",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.537",
@@ -56,5 +58,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "postcss": "^8.5.31"
   }
 }

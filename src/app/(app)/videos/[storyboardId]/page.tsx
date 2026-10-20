@@ -16,6 +16,8 @@ import type { QaReport } from "@/features/video/qa";
 import { type ActiveJob, RenderPanel } from "@/features/video/render-panel";
 import { buildTimeline } from "@/features/video/timeline";
 import { VideoPreview } from "@/features/video/video-preview";
+import { getWorkerStatus } from "@/features/monitoring/queries";
+import { workerState } from "@/features/monitoring/status";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Video Studio" };
@@ -58,6 +60,8 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     })),
   });
   const activeRow = jobs?.find((j) => j.status === "queued" || j.status === "processing");
+  // Only asked while a job waits: tells "worker not running" apart from "queued behind another job".
+  const worker = activeRow?.status === "queued" ? workerState(await getWorkerStatus(db)) : "unknown";
   const active: ActiveJob | null = activeRow
     ? {
         id: activeRow.id,
@@ -143,7 +147,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
           <section className="rounded-lg border bg-surface p-4">
             <h2 className="mb-3 font-semibold">Render</h2>
             {sb.status === "approved" ? (
-              <RenderPanel storyboardId={sb.id} active={active} hasOutput={!!output} />
+              <RenderPanel storyboardId={sb.id} active={active} hasOutput={!!output} workerOnline={worker === "unknown" ? null : worker === "online" || worker === "busy"} />
             ) : (
               <p className="text-[13px] text-muted-foreground">อนุมัติสคริปต์ก่อน</p>
             )}
