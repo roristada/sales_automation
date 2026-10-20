@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -39,6 +39,27 @@ function loadEnvFile() {
   }
 }
 loadEnvFile();
+
+/**
+ * Remotion keeps per-render scratch (bundles, downloaded assets) in the OS temp folder and
+ * doesn't always remove it, which slowly fills the system drive (C: on Windows). Point temp at
+ * a folder beside the outputs instead; leftovers older than a day are removed at start.
+ */
+function moveTempToProject() {
+  const dir = path.resolve(process.env.RENDER_TMP_DIR || "storage/tmp");
+  mkdirSync(dir, { recursive: true });
+  process.env.TEMP = process.env.TMP = process.env.TMPDIR = dir;
+  const dayAgo = Date.now() - 86_400_000;
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name);
+    try {
+      if (statSync(full).mtimeMs < dayAgo) rmSync(full, { recursive: true, force: true });
+    } catch {
+      // in use or already gone
+    }
+  }
+}
+moveTempToProject();
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
