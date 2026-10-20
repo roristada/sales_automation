@@ -7,7 +7,8 @@ import { estimateSceneSeconds } from "@/features/content/validate";
  */
 
 export const VIDEO = { width: 1080, height: 1920, fps: 30 } as const;
-export const RENDERER_VERSION = 1;
+// 2: zoned layout (no text overlap), product photo per scene, spec/price/step callouts, motion.
+export const RENDERER_VERSION = 2;
 
 /** Longest subtitle line, in characters; ~2 lines of this fit the 1080px frame at the chosen size. */
 export const SUBTITLE_MAX_CHARS = 26;
@@ -31,6 +32,12 @@ export interface TimelineScene {
   from: number;
   duration: number;
   media: SceneMedia | null;
+  /** Product photo for this scene (cycles through `images`); null → name card. */
+  image: string | null;
+  /** Small label over the card: "จุดเด่น 2", "ขั้นที่ 1", "ราคา"; null for none. */
+  badge: string | null;
+  /** 0, 1, 2… — alternates entrance side and camera move between scenes. */
+  index: number;
 }
 
 export interface SubtitleCue {
@@ -46,8 +53,10 @@ export interface VideoProps {
   height: number;
   durationInFrames: number;
   productName: string;
-  /** data: URI or http(s) URL; null → name card instead of a photo. */
+  /** Main photo (data: URI or http(s) URL); null → name card instead of a photo. */
   imageSrc: string | null;
+  /** Main photo first, then extra photos; empty when there are none. */
+  images: string[];
   hook: string;
   hookDuration: number;
   cta: string;
@@ -60,6 +69,8 @@ export interface VideoProps {
 export interface TimelineInput {
   productName: string;
   imageSrc: string | null;
+  /** Extra product photos; scenes without library media cycle through main + these. */
+  gallery?: string[];
   hook: string;
   cta: string;
   disclosure: string;
@@ -92,15 +103,24 @@ export function splitSubtitle(text: string, max = SUBTITLE_MAX_CHARS): string[] 
 
 const toFrames = (seconds: number, fps: number) => Math.max(1, Math.round(seconds * fps));
 
+const BADGE: Record<string, string> = { feature: "จุดเด่น", step: "ขั้นที่", price: "ราคา" };
+
 export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): VideoProps {
   let cursor = 0;
   const scenes: TimelineScene[] = [];
   const cues: SubtitleCue[] = [];
+  const images = [input.imageSrc, ...(input.gallery ?? [])].filter((x): x is string => !!x);
+  const counts: Record<string, number> = {};
+  let photo = 0;
 
-  for (const s of input.scenes) {
+  for (const [index, s] of input.scenes.entries()) {
     const seconds = Math.max(MIN_SCENE_SECONDS, s.audioSeconds ?? estimateSceneSeconds(s.narration) + 0.3);
     const duration = toFrames(seconds, fps);
-    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null });
+    counts[s.kind] = (counts[s.kind] ?? 0) + 1;
+    const badge = BADGE[s.kind] ? (s.kind === "price" ? BADGE.price : `${BADGE[s.kind]} ${counts[s.kind]}`) : null;
+    // Photos advance only on scenes that show one, so a library clip doesn't skip a photo.
+    const image = s.media || !images.length ? null : images[photo++ % images.length];
+    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null, image, badge, index });
 
     // Cues share the scene time in proportion to their length, so long lines stay on longer.
     const lines = splitSubtitle(s.narration);
@@ -123,6 +143,7 @@ export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): Vi
     durationInFrames: endCard.from + endCard.duration,
     productName: input.productName,
     imageSrc: input.imageSrc,
+    images,
     hook: input.hook,
     hookDuration: Math.min(toFrames(HOOK_SECONDS, fps), firstScene || toFrames(HOOK_SECONDS, fps)),
     cta: input.cta,

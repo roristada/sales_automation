@@ -110,6 +110,38 @@ const dateCell = z.preprocess(
   z.iso.datetime({ message: "วันที่ไม่ถูกต้อง (ใช้รูปแบบ YYYY-MM-DD)" }).nullable(),
 );
 
+export const MAX_GALLERY_URLS = 9;
+const LINE = "\n";
+
+function isHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** The stored gallery (one URL per line) as a list. */
+export function galleryList(gallery: string | null | undefined): string[] {
+  return gallery ? gallery.split(LINE).filter(Boolean) : [];
+}
+
+/** Extra photo links: any whitespace/comma separated list in, one URL per line out (or null). */
+const galleryUrls = z.preprocess(
+  (v) => {
+    const text = Array.isArray(v) ? v.join(" ") : v;
+    if (typeof text !== "string") return text ?? null;
+    const urls = text.split(/[\s,]+/).filter(Boolean);
+    return urls.length ? urls : null;
+  },
+  z
+    .array(z.string().max(2000).refine(isHttpUrl, "ลิงก์รูปต้องขึ้นต้นด้วย http:// หรือ https://"))
+    .max(MAX_GALLERY_URLS, `ใส่รูปเพิ่มเติมได้ไม่เกิน ${MAX_GALLERY_URLS} ลิงก์`)
+    .transform((urls) => [...new Set(urls)].join(LINE))
+    .nullable(),
+);
+
 export const productInputSchema = z.object({
   name: z.preprocess(
     (v) => (typeof v === "string" ? v.trim() : v),
@@ -124,6 +156,7 @@ export const productInputSchema = z.object({
   commission_rate: numberCell({ label: "อัตราค่าคอมมิชชัน", max: 100 }).default(null),
   commission_amount: numberCell({ label: "ค่าคอมมิชชัน" }).default(null),
   image_url: httpUrl.default(null),
+  gallery_urls: galleryUrls.default(null),
   description: trimmed(5000).default(null),
   notes: trimmed(2000).default(null),
   retrieved_at: dateCell.default(null),

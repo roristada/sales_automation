@@ -16,6 +16,7 @@ import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { licenseVerdict } from "@/features/assets/licensing";
+import { galleryList } from "@/features/products/schema";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
 import { runFfprobe } from "@/features/video/ffprobe";
 import { fetchPublic } from "@/features/video/safe-fetch";
@@ -76,6 +77,8 @@ const DRAIN = process.argv.includes("--drain");
 // Free License: individuals / companies with up to 3 employees (docs/LICENSING.md).
 const LICENSE_KEY = process.env.REMOTION_LICENSE_KEY || "free-license";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Extra product photos fetched per render (main photo not counted). */
+const MAX_GALLERY_IMAGES = 5;
 
 const db = createClient<Database>(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 const storage = getStorage();
@@ -190,7 +193,7 @@ async function loadPlan(job: Tables<"render_jobs">) {
   if (!sb) throw new RenderError("storyboard_missing", "ไม่พบสคริปต์ของงานนี้ (อาจถูกลบไปแล้ว)");
   if (sb.status !== "approved") throw new RenderError("not_approved", "สคริปต์ยังไม่ได้อนุมัติ — อนุมัติใน Script Studio ก่อน render");
   const { data: project } = await db.from("content_projects").select("product_id").eq("id", sb.project_id).single();
-  const { data: product } = await db.from("products").select("name, image_url").eq("id", project!.product_id).single();
+  const { data: product } = await db.from("products").select("name, image_url, gallery_urls").eq("id", project!.product_id).single();
   const { data: scenes } = await db
     .from("storyboard_scenes")
     .select("id, kind, narration, on_screen_text, position, asset:assets(id, name, kind, mime, storage_key, license, attribution, source, ai_generated, duration_s)")
@@ -236,6 +239,9 @@ async function processJob(job: Tables<"render_jobs">) {
     await update(job.id, { stage: "loading", progress: 0.02 });
     const { sb, product, scenes } = await loadPlan(job);
     const image = await loadImage(product.image_url);
+    // Extra photos are optional: ones that fail to load are skipped and noted in QA.
+    const extra = await Promise.all(galleryList(product.gallery_urls).slice(0, MAX_GALLERY_IMAGES).map((u) => loadImage(u)));
+    const gallery = extra.flatMap((e) => (e.src ? [e.src] : []));
     const base = scenes.some((s) => s.asset) ? await getAssetServer() : "";
     const tokens: string[] = [];
     const withMedia = scenes.map((s) => {
@@ -252,6 +258,7 @@ async function processJob(job: Tables<"render_jobs">) {
     const props: VideoProps = buildTimeline({
       productName: product.name,
       imageSrc: image.src,
+      gallery,
       hook: sb.hook,
       cta: sb.cta,
       disclosure: sb.disclosure,
@@ -307,6 +314,13 @@ async function processJob(job: Tables<"render_jobs">) {
     const facts = probeFacts(probe);
     const report = qaReport(facts, { width: VIDEO.width, height: VIDEO.height, fps: VIDEO.fps, durationS: props.durationInFrames / props.fps }, [
       image.check,
+      {
+        key: "gallery",
+        label: "รูปเพิ่มเติม",
+        ok: extra.every((e) => e.src),
+        detail: extra.length ? `ใช้ ${gallery.length} จาก ${extra.length} รูป${gallery.length < extra.length ? " (บางรูปโหลดไม่ได้)" : ""}` : "ไม่มีรูปเพิ่มเติม — ทุกฉากใช้รูปหลัก",
+        level: "warn",
+      },
       { key: "disclosure", label: "เปิดเผยลิงก์ affiliate", ok: props.disclosure.includes("ค่าคอมมิชชัน"), detail: "แสดงในฉากปิดท้ายและซับไตเติล", level: "error" },
       { key: "voice", label: "เสียงพากย์", ok: false, detail: "ยังไม่ได้เชื่อมต่อ TTS — วิดีโอไม่มีเสียงพากย์ จังหวะมาจากการประมาณ", level: "warn" },
     ]);

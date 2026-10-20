@@ -621,6 +621,7 @@ export type Database = {
           created_at: string;
           currency: string;
           description: string | null;
+          gallery_urls: string | null;
           id: string;
           image_url: string | null;
           import_batch_id: string | null;
@@ -646,6 +647,7 @@ export type Database = {
           created_at?: string;
           currency?: string;
           description?: string | null;
+          gallery_urls?: string | null;
           id?: string;
           image_url?: string | null;
           import_batch_id?: string | null;
@@ -670,6 +672,7 @@ export type Database = {
           created_at?: string;
           currency?: string;
           description?: string | null;
+          gallery_urls?: string | null;
           id?: string;
           image_url?: string | null;
           import_batch_id?: string | null;

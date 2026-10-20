@@ -191,3 +191,13 @@ describe("Shopee Affiliate bulk-link export (ลิงก์สินค้า�
     expect(mapRow(row("2.1หมื่น", "", ""), m)).toMatchObject({ ok: false });
   });
 });
+
+describe("gallery_urls", () => {
+  it("accepts a whitespace/comma separated list and stores one URL per line", () => {
+    const ok = productInputSchema.safeParse({ name: "x", gallery_urls: "https://a/1.jpg, https://a/2.jpg\n\nhttps://a/1.jpg" });
+    expect(ok.success && ok.data.gallery_urls).toBe("https://a/1.jpg\nhttps://a/2.jpg");
+    expect(productInputSchema.safeParse({ name: "x", gallery_urls: "" }).data?.gallery_urls).toBeNull();
+    expect(productInputSchema.safeParse({ name: "x", gallery_urls: "javascript:alert(1)" }).success).toBe(false);
+    expect(productInputSchema.safeParse({ name: "x", gallery_urls: Array.from({ length: 10 }, (_, i) => `https://a/${i}.jpg`).join(" ") }).success).toBe(false);
+  });
+});

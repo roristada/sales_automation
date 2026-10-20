@@ -17,6 +17,7 @@ import { type ActiveJob, RenderPanel } from "@/features/video/render-panel";
 import { buildTimeline } from "@/features/video/timeline";
 import { VideoPreview } from "@/features/video/video-preview";
 import { getWorkerStatus } from "@/features/monitoring/queries";
+import { galleryList } from "@/features/products/schema";
 import { workerState } from "@/features/monitoring/status";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -38,7 +39,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const { supabase } = await getCurrentUser();
   const db = supabase!;
 
-  const { data: sb } = await db.from("storyboards").select("*, project:content_projects(id, title, platform, target_duration_s, product:products(id, name, image_url))").eq("id", storyboardId).maybeSingle();
+  const { data: sb } = await db.from("storyboards").select("*, project:content_projects(id, title, platform, target_duration_s, product:products(id, name, image_url, gallery_urls))").eq("id", storyboardId).maybeSingle();
   if (!sb?.project?.product) notFound();
   const { project } = sb;
   const product = project.product!;
@@ -51,6 +52,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const preview = buildTimeline({
     productName: product.name,
     imageSrc: product.image_url,
+    gallery: galleryList(product.gallery_urls),
     hook: sb.hook,
     cta: sb.cta,
     disclosure: sb.disclosure,

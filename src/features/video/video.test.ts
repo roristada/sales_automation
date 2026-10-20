@@ -121,3 +121,51 @@ describe("SSRF guard", () => {
     }
   });
 });
+
+describe("template layout", () => {
+  it("shrinks long on-screen text so it stays inside its zone", async () => {
+    const { fitFontSize, textWidth, ZONES, TEXT_WIDTH } = await import("./layout");
+    const opts = { maxWidth: TEXT_WIDTH, maxHeight: ZONES.text.height, sizes: [72, 62, 54, 46, 40], padding: 28 };
+    expect(fitFontSize("ลิงก์ในคลิป", opts)).toBe(72);
+    // The overlapping case from a real render: a 60-character Thai line.
+    const long = "ดีไซน์ Open-Ear แบบคลิปออน: หูฟังไร้สายแบบเปิดหู (Open-Ear) หนีบใบหู";
+    const size = fitFontSize(long, opts);
+    expect(size).toBeLessThan(72);
+    const lines = Math.ceil(textWidth(long, size) / (TEXT_WIDTH - 28));
+    expect(lines * size * 1.3 + 28).toBeLessThanOrEqual(ZONES.text.height);
+    // Text zone ends above the subtitle zone (bottom-anchored, ~100px tall).
+    expect(ZONES.text.top + ZONES.text.height).toBeLessThan(1920 - ZONES.subtitle.bottom - 100);
+    expect(ZONES.card.top + ZONES.card.size).toBeLessThan(ZONES.text.top);
+  });
+
+  it("splits spec callouts and ignores Thai marks when measuring", async () => {
+    const { splitLabel, textWidth } = await import("./layout");
+    expect(splitLabel("กันน้ำ: IP55")).toEqual({ label: "กันน้ำ", value: "IP55" });
+    expect(splitLabel("ลิงก์ในคลิป")).toBeNull();
+    expect(textWidth("ที่", 100)).toBe(textWidth("ท", 100));
+  });
+});
+
+describe("timeline photos and badges", () => {
+  it("cycles product photos through scenes without media and numbers features", () => {
+    const t = buildTimeline({
+      productName: "x",
+      imageSrc: "main.jpg",
+      gallery: ["g1.jpg", "g2.jpg"],
+      hook: "",
+      cta: "",
+      disclosure: "d",
+      scenes: [
+        { id: "a", kind: "intro", narration: "หนึ่ง", on_screen_text: "" },
+        { id: "b", kind: "feature", narration: "สอง", on_screen_text: "", media: { kind: "video", src: "clip", durationS: 3 } },
+        { id: "c", kind: "feature", narration: "สาม", on_screen_text: "" },
+        { id: "d", kind: "price", narration: "สี่", on_screen_text: "฿99" },
+        { id: "e", kind: "cta", narration: "ห้า", on_screen_text: "" },
+      ],
+    });
+    expect(t.images).toEqual(["main.jpg", "g1.jpg", "g2.jpg"]);
+    expect(t.scenes.map((s) => s.image)).toEqual(["main.jpg", null, "g1.jpg", "g2.jpg", "main.jpg"]);
+    expect(t.scenes.map((s) => s.badge)).toEqual([null, "จุดเด่น 1", "จุดเด่น 2", "ราคา", null]);
+    expect(buildTimeline({ productName: "x", imageSrc: null, hook: "", cta: "", disclosure: "d", scenes: [{ id: "a", kind: "intro", narration: "ก", on_screen_text: "" }] }).scenes[0].image).toBeNull();
+  });
+});
