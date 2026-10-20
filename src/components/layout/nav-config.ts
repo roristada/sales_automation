@@ -34,7 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Script Studio", icon: FileText, href: "/studio" },
   { label: "Video Studio", icon: Clapperboard, href: "/videos" },
   { label: "คลังไฟล์", icon: ImageIcon, href: "/assets" },
-  { label: "เผยแพร่", icon: Send, plannedFor: "Milestone 6" },
+  { label: "เผยแพร่", icon: Send, href: "/publishing" },
   { label: "Analytics", icon: BarChart3, plannedFor: "Milestone 7" },
   { label: "ตั้งค่า", icon: Settings, href: "/settings" },
 ];

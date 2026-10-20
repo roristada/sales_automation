@@ -48,6 +48,8 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 | ที่เก็บไฟล์ | ดิสก์ในเครื่อง (`storage/renders`) ผ่าน `StorageAdapter` | เครื่องเดียว; เปลี่ยนเป็น object storage ได้ตอน deploy |
 | สิทธิ์ไฟล์ในคลัง | ค่าเริ่มต้น "ไม่ทราบสิทธิ์"; ห้ามใช้เชิงพาณิชย์ → อนุมัติ/render ไม่ได้ | วิดีโอ affiliate เป็นงานเชิงพาณิชย์ (design.md §9.7) |
 | ค่าใช้จ่าย | บันทึกทุก render; เพดานหยุดเฉพาะงานที่มีค่าใช้จ่าย; render ในเครื่อง = ฿0 | ตามงบ 0–1,000 บาท/เดือน; ไม่บล็อกงานฟรี |
+| เผยแพร่ | โพสต์เองแล้ววางลิงก์โพสต์กลับมา; ไม่มี auto-post | TikTok/Meta/YouTube ต้องใช้ OAuth + ผ่านการตรวจแอปก่อนโพสต์สาธารณะได้; สถานะ “เผยแพร่แล้ว” มาจากลิงก์ที่ผู้ใช้บันทึกเท่านั้น (design.md §9.8) |
+| กันโพสต์ซ้ำ | 1 รายการต่อคอนเทนต์ต่อแพลตฟอร์ม (ไม่นับที่ลบโพสต์แล้ว) + ลิงก์โพสต์ห้ามซ้ำ | render ใหม่ของคอนเทนต์เดิม = วิดีโอเดิม; อยากโพสต์ใหม่ให้บันทึกว่าลบโพสต์เก่าก่อน |
 
 ---
 
@@ -67,6 +69,8 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 | **Security review:** SSRF — worker โหลดรูปจาก `image_url` ที่ผู้ใช้ใส่ได้ทุกที่รวมถึง localhost/เครือข่ายภายใน | ใช้ `fetch` ตรงๆ ตาม redirect | `fetchPublic` (`safe-fetch.ts`): อนุญาตเฉพาะ IP สาธารณะ ตรวจตอนเชื่อมต่อจริงทุก redirect hop, จำกัดขนาด/เวลา |
 | **Security review:** ปลอม `storage_key` ของ asset ผ่าน API ให้ชี้ไฟล์ของผู้ใช้อื่นแล้วดาวน์โหลด | insert ผ่าน PostgREST ได้โดยไม่ตรวจรูปแบบ key | migration `20261025000000_asset_key_guard.sql` บังคับ key = `<owner>/<id>/original.<ext>` + mime ที่รับ; route ตรวจ prefix ซ้ำ; มี RLS test |
 | Upload ใหญ่ผ่าน middleware ถูกตัด | Next 15 buffer body ใน middleware สูงสุด 10 MB | `experimental.middlewareClientMaxBodySize: "210mb"` |
+| render ล้ม `Jest worker encountered 2 child process exceptions` (stack ชี้ไป `remi_shop`) | dev server ของ remi_shop ฟัง `0.0.0.0:3000`; Remotion ตรวจพอร์ตเฉพาะ 127.0.0.1 ซึ่ง Windows ยอมให้ bind ซ้อน → Chrome โหลดแอปอื่นแทน bundle | worker หาพอร์ตว่างจริงจาก OS แล้วส่ง `port` ให้ Remotion ทุกครั้ง |
+| สิทธิ์ UPDATE ทั้งตาราง `publications` ยังอยู่แม้ grant รายคอลัมน์ | default privileges ของ Supabase ให้ทุกสิทธิ์กับ `authenticated` | `revoke update` ก่อน grant รายคอลัมน์ (แบบเดียวกับ `assets`); มี RLS test |
 
 ---
 
@@ -82,3 +86,4 @@ npm run worker                   # terminal ที่สอง — ต้อง�
 - เริ่มใช้ git (commit แรก = สถานะ ณ จุดพักนี้), เพิ่มไฟล์นี้
 - แก้ 3 ประเด็นจาก security review อัตโนมัติ (open redirect, SSRF, asset storage_key) — ดูตารางปัญหาด้านบน
 - security review รอบสอง: redirect ที่ normalize แล้วกลายเป็น `//evil.com` (`/.//evil.com`, `/%2e//…`) → ตรวจผลลัพธ์หลัง normalize ซ้ำ; ดาวน์โหลดรูปใช้ timeout แบบ idle (เซิร์ฟเวอร์ส่งทีละไบต์ค้างได้) → เปลี่ยนเป็นเส้นตายรวมด้วย `AbortSignal.timeout`
+- M6: ตาราง `publications` + หน้าเผยแพร่ (ชุดไฟล์ + แคปชัน + ลิงก์, ตั้งเวลาแบบเตือน, บันทึกลิงก์โพสต์, ลบโพสต์/โพสต์ใหม่), adapter ของ 3 แพลตฟอร์มแสดง “ยังไม่เชื่อมต่อ”; แก้พอร์ตชนของ Remotion

@@ -21,7 +21,7 @@ test("mobile navigation and layout", async ({ page }) => {
   await expect(page).toHaveURL(/\/research/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  for (const path of ["/dashboard", "/research", "/research/sources", "/research/trends", "/content", "/content/new", "/studio", "/videos", "/assets", "/products", "/products/new", "/products/import", "/settings"]) {
+  for (const path of ["/dashboard", "/research", "/research/sources", "/research/trends", "/content", "/content/new", "/studio", "/videos", "/assets", "/publishing", "/products", "/products/new", "/products/import", "/settings"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

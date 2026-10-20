@@ -295,9 +295,71 @@ describe("row level security", () => {
     await a.client.from("assets").delete().eq("id", asset!.id);
   });
 
+  it("publications: own approved, QA-passed videos only; disclosure kept; no double posting; posted rows locked", async () => {
+    const disclosure = "#ได้รับค่าคอมมิชชัน";
+    const { data: prod } = await a.client.from("products").insert({ name: "สินค้าเผยแพร่", source: "manual" }).select("id").single();
+    const { data: project } = await a.client.from("content_projects").insert({ product_id: prod!.id, title: "p", platform: "tiktok", target_duration_s: 30 }).select("id").single();
+    const { data: sb } = await a.client
+      .from("storyboards")
+      .insert({ project_id: project!.id, version: 1, template_id: "quick_review", template_version: 1, disclosure, status: "approved", approved_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    // Outputs are written by the worker (service role).
+    const output = async (ok: boolean) => {
+      const { data: job } = await admin.from("render_jobs").insert({ owner_id: a.id, storyboard_id: sb!.id, status: "completed" }).select("id").single();
+      const { data: out } = await admin.from("render_outputs").insert({ job_id: job!.id, owner_id: a.id, video_key: "x.mp4", report: { ok, checks: [] } }).select("id").single();
+      return out!.id;
+    };
+    const good = await output(true);
+    const bad = await output(false);
+    const row = (outputId: string, extra: Record<string, unknown> = {}) => ({ render_output_id: outputId, platform: "tiktok", caption: `cap
+
+${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure, ...extra });
+
+    // B can't publish A's video, even with A's ids.
+    expect((await b.client.from("publications").insert(row(good))).error?.code).toBe("42501");
+    // QA-failed video and a caption without the disclosure are refused.
+    expect((await a.client.from("publications").insert(row(bad))).error?.code).toBe("P0001");
+    expect((await a.client.from("publications").insert(row(good, { caption: "no disclosure" }))).error?.code).toBe("23514");
+    // A forged disclosure is replaced by the storyboard's own.
+    expect((await a.client.from("publications").insert(row(good, { caption: "x", disclosure: "x" }))).error?.code).toBe("23514");
+    // Can't start as published.
+    expect((await a.client.from("publications").insert(row(good, { status: "published", published_at: new Date().toISOString(), external_url: "https://tiktok.com/v/1" }))).error?.code).toBe("P0001");
+
+    const { data: pub, error } = await a.client.from("publications").insert(row(good)).select("id, owner_id, disclosure").single();
+    expect(error).toBeNull();
+    expect(pub!.owner_id).toBe(a.id);
+    // One live publication per content and platform.
+    expect((await a.client.from("publications").insert(row(good))).error?.code).toBe("23505");
+    expect((await a.client.from("publications").insert(row(good, { platform: "shorts" }))).error).toBeNull();
+
+    // Published needs a post URL; afterwards the caption/video are locked; can't go back to draft.
+    expect((await a.client.from("publications").update({ status: "published", published_at: new Date().toISOString() }).eq("id", pub!.id)).error?.code).toBe("23514");
+    expect((await a.client.from("publications").update({ status: "published", published_at: new Date().toISOString(), external_url: `https://www.tiktok.com/@a/video/${run}` }).eq("id", pub!.id)).error).toBeNull();
+    expect((await a.client.from("publications").update({ caption: `changed ${disclosure}` }).eq("id", pub!.id)).error?.code).toBe("P0001");
+    expect((await a.client.from("publications").update({ status: "draft" }).eq("id", pub!.id)).error?.code).toBe("P0001");
+    expect((await a.client.from("publications").update({ notes: "ok" }).eq("id", pub!.id)).error).toBeNull();
+    // Derived columns can't be written directly.
+    expect((await a.client.from("publications").update({ disclosure: "x" }).eq("id", pub!.id)).error?.code).toBe("42501");
+    // Posted rows are history: not deletable, only withdrawn. Then the content can be posted again.
+    expect((await a.client.from("publications").delete().eq("id", pub!.id).select()).data).toEqual([]);
+    const { data: w } = await a.client.from("publications").update({ status: "withdrawn" }).eq("id", pub!.id).select("withdrawn_at").single();
+    expect(w!.withdrawn_at).not.toBeNull();
+    expect((await a.client.from("publications").insert(row(good))).error).toBeNull();
+
+    // B sees and changes nothing of A's.
+    expect((await b.client.from("publications").select("id")).data).toEqual([]);
+    expect((await b.client.from("publications").update({ notes: "x" }).eq("id", pub!.id).select()).data).toEqual([]);
+    expect((await b.client.from("publications").delete().eq("project_id", project!.id).select()).data).toEqual([]);
+
+    // Deleting the product cascades through to its publications.
+    await a.client.from("products").delete().eq("id", prod!.id);
+    expect((await a.client.from("publications").select("id").eq("project_id", project!.id)).data).toEqual([]);
+  });
+
   it("anonymous clients see nothing", async () => {
     const anon = createClient<Database>(URL, ANON, { auth: { persistSession: false } });
-    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits"] as const) {
+    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications"] as const) {
       const { data, error } = await anon.from(table as "products").select("*");
       expect(data ?? []).toEqual([]);
       if (error) expect(error.code).toBe("42501");

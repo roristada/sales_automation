@@ -1,6 +1,6 @@
 # Phase 0 Plan — AI Affiliate Automation Platform
 
-อัปเดต: 2026-10-20 · สถานะ: **Phase 0 เสร็จ, Milestone 1 เสร็จและทดสอบแล้ว, Milestone 2 เสร็จ ยกเว้น Shopee API (รอสิทธิ์), Milestone 3 เสร็จ, Milestone 4 เสร็จ (ยังไม่มีเสียงพากย์), Milestone 5 เสร็จ** (ดู [CHECKLIST.md](CHECKLIST.md))
+อัปเดต: 2026-10-20 · สถานะ: **Phase 0 เสร็จ, Milestone 1 เสร็จและทดสอบแล้ว, Milestone 2 เสร็จ ยกเว้น Shopee API (รอสิทธิ์), Milestone 3 เสร็จ, Milestone 4 เสร็จ (ยังไม่มีเสียงพากย์), Milestone 5 เสร็จ, Milestone 6 เสร็จ (เผยแพร่แบบโพสต์เอง ยังไม่มี API ของแพลตฟอร์ม)** (ดู [CHECKLIST.md](CHECKLIST.md))
 
 ---
 
@@ -137,7 +137,7 @@ Migration ทั้งหมดอยู่ใน `supabase/migrations/` ทด�
 | M3 Content Planning | 6 templates, storyboard schema, Thai script, fact validation, edit/approve, LLM interface | สร้าง storyboard จาก template ได้; ทุก claim อ้าง fact ของสินค้า; ต้อง approve ก่อน render; มี affiliate disclosure |
 | M4 Video Engine | Remotion, Google TTS, Thai subtitles, FFmpeg, worker, job status, MP4, preview/download, rerender | MP4 1080×1920@30 H.264/AAC เล่นได้; timing จากความยาวเสียงจริง; QA report; แก้ scene แล้ว rerender; error อ่านเข้าใจได้; ไม่มี credentials → แจ้งว่า TTS ยังไม่เชื่อมต่อ |
 | M5 Workflow Automation | queue, retries, assets, usage, cost limits, approval | idempotency; bounded retry; เกิน cap → หยุดพร้อมข้อความ |
-| M6 Publishing | manual export (MP4/caption/thumbnail/affiliate URL), บันทึกสถานะเผยแพร่เอง, platform adapters เมื่อมีสิทธิ์ | ไม่โพสต์ซ้ำ; ไม่มี auto-post ถ้าไม่มี OAuth/สิทธิ์ |
+| M6 Publishing ✅ (manual) | manual export (MP4/caption/thumbnail/affiliate URL), บันทึกสถานะเผยแพร่เอง, platform adapters เมื่อมีสิทธิ์ | ไม่โพสต์ซ้ำ; ไม่มี auto-post ถ้าไม่มี OAuth/สิทธิ์ |
 | M7 Analytics | CSV import ผลลัพธ์, metrics ตามที่มีจริง | แยก attributed conversions จากยอดรวม; cost ต่อวิดีโอ |
 | M8 Production readiness | security review, monitoring, backup, deploy docs | — |
 

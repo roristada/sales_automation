@@ -115,3 +115,20 @@ Queue, bounded retries, idempotency and approve-before-render were delivered in 
 - [x] Tests — unit 80 ✅, RLS 14 ✅, e2e 7 specs ✅ (M5: uploads, dedupe, license warnings/gate, assets in scenes, delete blocked while used, cap blocks render, render with clip+image, usage shown); run twice for stability
 
 Not done: `tts_cache` (comes with a TTS provider).
+
+## Milestone 6 — Publishing ✅ manual (no platform API yet) (2026-10-20)
+- [x] Migration `20261026000000_publishing.sql`: `publications` (render output, platform, method `manual`, status draft / scheduled / published / withdrawn, caption, affiliate URL, schedule, post URL/ID, notes); RLS owner-only
+  - trigger derives storyboard, project and disclosure from the render output (user can't forge them); only approved, QA-passed videos; output must be the caller's own
+  - caption must contain the storyboard's affiliate disclosure (SQL check)
+  - "published" requires `published_at` + https post URL; a publication can't start as published
+  - no double posting: one live publication per content project + platform (withdrawn ones don't count); the same post URL can't be recorded twice
+  - posted rows lock caption/video/platform/URL; status flow draft ⇄ scheduled → published → withdrawn; posted rows can't be deleted (history); column grants keep derived columns read-only
+- [x] `PublishingAdapter` interface + registry (TikTok, Instagram Reels, YouTube Shorts) — all "ยังไม่เชื่อมต่อ" with the real reason (OAuth + app review; YouTube unverified uploads are private); `publish` absent until access exists
+- [x] Pure rules (`src/features/publishing/publishing.ts`): first caption = script caption + disclosure (+ link on Shorts, where description links work); post URL must be https on the platform's own hosts (no look-alikes); caption length per platform; warnings for no affiliate link / newer render
+- [x] `/publishing`: platform status, "ready to publish" (rendered, not prepared), publications list (status, time, overdue schedule, post link)
+- [x] `/publishing/[id]`: export pack (MP4, JPG, SRT, VTT named per platform), caption editor with copy + .txt download, affiliate link copy, where the link goes on the platform, pre-post checks, schedule (reminder only), "บันทึกว่าเผยแพร่แล้ว" with post URL, switch to the latest render, withdraw (confirm), delete unposted
+- [x] Video Studio: "เผยแพร่" panel (existing publications + prepare; suggests a platform the content isn't on yet); Dashboard: "วิดีโอรอโพสต์" count; sidebar item enabled
+- [x] Fix: worker passes a free port to Remotion — with another dev server on `0.0.0.0:3000` (e.g. remi_shop), Remotion's 127.0.0.1-only check passed and Chrome loaded the other app ("Jest worker encountered 2 child process exceptions")
+- [x] Tests — unit 90 ✅ (publishing 6), RLS 15 ✅ (publications), e2e 8 specs ✅ (M6: prepare → export → disclosure kept → schedule → wrong-platform URL refused → published → same platform opens the same record → withdraw → prepare again → delete unposted); migrations verified on a fresh shadow DB
+
+Not done in M6: posting through platform APIs (needs OAuth apps and platform approval per account) and post status read-back; those come as `PublishingAdapter.publish` + method `api`.

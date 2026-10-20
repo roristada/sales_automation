@@ -429,9 +429,8 @@ Recorded per §15.7. Last updated 2026-10-20.
     `DataTable`/`Th`/`Td`/`Tr` (with `hideBelow` for limited-column
     mobile tables). Shell: `src/components/layout/app-shell.tsx`, nav
     order in `nav-config.ts`.
--   **Planned modules in navigation (§6).** Content Planner, Script
-    Studio, Video Studio, Asset Library, Publishing and Analytics have no
-    backend yet. They appear in the sidebar as non-interactive items
+-   **Planned modules in navigation (§6).** Analytics has no backend
+    yet. It appears in the sidebar as a non-interactive item
     labelled "เร็วๆ นี้" with the delivering milestone in a tooltip; no
     placeholder pages exist.
 -   **Product Research vs Products.** `/research` is for evaluation
@@ -463,6 +462,15 @@ Recorded per §15.7. Last updated 2026-10-20.
     by the licensing verdict (with the reason in text) and usage count.
     License defaults to "ไม่ทราบสิทธิ์". Scenes pick assets in Script
     Studio; a picked asset replaces the product card full-screen.
+-   **Publishing (§9.8).** `/publishing` shows each platform's real
+    connection state (all "ยังไม่เชื่อมต่อ" until OAuth + app review),
+    videos ready to publish and the publication list. `/publishing/[id]`
+    is the manual export workflow: files, caption (disclosure required,
+    copy / .txt), affiliate link and where it goes on that platform,
+    pre-post checks, schedule as a reminder, and "บันทึกว่าเผยแพร่แล้ว"
+    with the post URL — the only way an item shows as published, with
+    "บันทึกโดยคุณ" stated next to it. Posted items are kept; "ลบโพสต์แล้ว"
+    records a takedown.
 -   **Usage & limits (§9.10).** Settings adds today/month spend,
     30-day usage per provider and daily/monthly caps; the rate in use is
     stated, and the copy says free work is never blocked.

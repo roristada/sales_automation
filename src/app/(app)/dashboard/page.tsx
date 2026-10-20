@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   const staleOr = `retrieved_at.lt.${cutoff},and(retrieved_at.is.null,updated_at.lt.${cutoff})`;
   const count = () => db.from("products").select("id", { count: "exact", head: true });
 
-  const [total, noPrice, noCommission, stale, attention, batches, profile] = await Promise.all([
+  const [total, noPrice, noCommission, stale, attention, batches, profile, toPost] = await Promise.all([
     count(),
     count().is("price", null),
     count().is("commission_rate", null).is("commission_amount", null),
@@ -33,6 +33,7 @@ export default async function DashboardPage() {
       .limit(6),
     db.from("import_batches").select("id, file_name, status, total_rows, inserted_count, updated_count, duplicate_count, failed_count, created_at").order("created_at", { ascending: false }).limit(5),
     db.from("profiles").select("display_name").eq("id", user!.id).maybeSingle(),
+    db.from("publications").select("id", { count: "exact", head: true }).in("status", ["draft", "scheduled"]),
   ]);
 
   const failed = [total, noPrice, noCommission, stale, attention, batches].find((r) => r.error);
@@ -91,6 +92,7 @@ export default async function DashboardPage() {
     { label: "ไม่มีราคา", value: noPrice.count, href: "/research?missing=price" },
     { label: "ไม่มีค่าคอม", value: noCommission.count, href: "/research?missing=commission" },
     { label: `ราคาเก่ากว่า ${STALE_AFTER_DAYS} วัน`, value: stale.count, href: "/research?freshness=stale" },
+    { label: "วิดีโอรอโพสต์", value: toPost.count, href: "/publishing" },
   ];
 
   return (

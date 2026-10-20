@@ -119,6 +119,22 @@ function getAssetServer() {
   return assetServer;
 }
 
+/**
+ * A port nothing else listens on, for Remotion's bundle server. Remotion's own check binds
+ * 127.0.0.1 only, which Windows allows even while another app (e.g. a dev server on
+ * 0.0.0.0:3000) holds the port — the browser then loads that app instead of the bundle.
+ */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer();
+    server.once("error", reject);
+    server.listen(0, () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
 async function update(jobId: string, patch: Database["public"]["Tables"]["render_jobs"]["Update"]) {
   const { error } = await db.from("render_jobs").update(patch).eq("id", jobId);
   if (error) log(jobId, `อัปเดตสถานะไม่สำเร็จ: ${error.message}`);
@@ -230,7 +246,7 @@ async function processJob(job: Tables<"render_jobs">) {
 
     await update(job.id, { stage: "bundling", progress: 0.05 });
     const url = await getServeUrl();
-    const composition = await selectComposition({ serveUrl: url, id: "AffiliateVideo", inputProps: props });
+    const composition = await selectComposition({ serveUrl: url, id: "AffiliateVideo", inputProps: props, port: await freePort() });
 
     await update(job.id, { stage: "rendering", progress: 0.1 });
     const videoPath = path.join(tmp, "video.mp4");
@@ -238,6 +254,7 @@ async function processJob(job: Tables<"render_jobs">) {
     await renderMedia({
       composition,
       serveUrl: url,
+      port: await freePort(),
       codec: "h264",
       audioCodec: "aac",
       // No voice-over yet: a silent AAC track keeps the file valid for every platform.
@@ -258,7 +275,7 @@ async function processJob(job: Tables<"render_jobs">) {
 
     await update(job.id, { stage: "thumbnail", progress: 0.88 });
     const thumbPath = path.join(tmp, "thumbnail.jpg");
-    await renderStill({ composition, serveUrl: url, output: thumbPath, inputProps: props, frame: Math.min(20, props.durationInFrames - 1), imageFormat: "jpeg", licenseKey: LICENSE_KEY });
+    await renderStill({ composition, serveUrl: url, port: await freePort(), output: thumbPath, inputProps: props, frame: Math.min(20, props.durationInFrames - 1), imageFormat: "jpeg", licenseKey: LICENSE_KEY });
     await writeFile(path.join(tmp, "subtitles.srt"), toSrt(props), "utf8");
     await writeFile(path.join(tmp, "subtitles.vtt"), toVtt(props), "utf8");
 

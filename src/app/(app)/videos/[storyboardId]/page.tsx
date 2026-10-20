@@ -8,8 +8,10 @@ import { PageHeader, SectionHeader } from "@/components/shared/page-header";
 import { Notice } from "@/components/shared/states";
 import { StatusBadge, type WorkflowStatus } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
-import { getTemplate, type Platform, PLATFORM_LABEL } from "@/features/content/templates";
+import { getTemplate, type Platform, PLATFORM_LABEL, PLATFORMS } from "@/features/content/templates";
 import { formatDateTime } from "@/features/products/data-value";
+import { PreparePublication } from "@/features/publishing/publication-forms";
+import { PUBLICATION_BADGE, PUBLICATION_STATUS_LABEL, type PublicationStatus } from "@/features/publishing/publishing";
 import type { QaReport } from "@/features/video/qa";
 import { type ActiveJob, RenderPanel } from "@/features/video/render-panel";
 import { buildTimeline } from "@/features/video/timeline";
@@ -38,9 +40,10 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   if (!sb?.project?.product) notFound();
   const { project } = sb;
   const product = project.product!;
-  const [{ data: scenes }, { data: jobs }] = await Promise.all([
+  const [{ data: scenes }, { data: jobs }, { data: pubs }] = await Promise.all([
     db.from("storyboard_scenes").select("id, kind, narration, on_screen_text, asset:assets(id, kind, duration_s)").eq("storyboard_id", storyboardId).order("position"),
     db.from("render_jobs").select("*, output:render_outputs(*)").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(20),
+    db.from("publications").select("id, platform, status").eq("project_id", project.id).neq("status", "withdrawn").order("created_at"),
   ]);
 
   const preview = buildTimeline({
@@ -70,6 +73,9 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const output = latestDone?.output ?? null;
   const report = output?.report as QaReport | undefined;
   const lastFailed = jobs?.[0]?.status === "failed" ? jobs[0] : null;
+  // Suggest the project's platform first, then one this content isn't on yet.
+  const taken = new Set(pubs?.map((p) => p.platform));
+  const nextPlatform = [project.platform as Platform, ...PLATFORMS].find((p) => !taken.has(p)) ?? (project.platform as Platform);
   const fileBase = `${product.name.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 40)}-v${sb.version}`;
 
   return (
@@ -166,6 +172,27 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
                 ))}
               </ul>
               {output.size_bytes && <p className="mt-2 text-xs text-muted-foreground">{(output.size_bytes / 1024 / 1024).toFixed(1)} MB · {output.duration_s?.toFixed(1)} วินาที</p>}
+            </section>
+          )}
+
+          {output && sb.status === "approved" && (
+            <section id="publish" aria-labelledby="publish-h" className="scroll-mt-4 rounded-lg border bg-surface p-4 text-[13px]">
+              <h2 id="publish-h" className="mb-2 font-semibold">
+                เผยแพร่
+              </h2>
+              {pubs && pubs.length > 0 && (
+                <ul className="mb-3 flex flex-col gap-1.5">
+                  {pubs.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center gap-2">
+                      <Link href={`/publishing/${p.id}`} className="font-medium text-primary hover:underline">
+                        {PLATFORM_LABEL[p.platform as Platform]}
+                      </Link>
+                      <StatusBadge status={PUBLICATION_BADGE[p.status as PublicationStatus]} label={PUBLICATION_STATUS_LABEL[p.status as PublicationStatus]} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <PreparePublication outputId={output.id} defaultPlatform={nextPlatform} />
             </section>
           )}
 
