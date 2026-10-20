@@ -117,7 +117,8 @@ export function validateStoryboard(sb: VStoryboard, scenes: VScene[], facts: Fac
       for (const m of fact.value?.match(NUMBER) ?? []) backed.add(normNumber(m));
       if (fact.status === "unavailable") block(`ฉากที่ ${n}: claim “${c.text}” อ้างอิง${fact.label}ที่ไม่มีข้อมูล`, s.id, c.id);
       else if (fact.status === "stale") block(`ฉากที่ ${n}: ${fact.label}เก่าแล้ว ตรวจสอบและอัปเดตข้อมูลสินค้าก่อน`, s.id, c.id);
-      else if (fact.status === "ai_estimate") warn(`ฉากที่ ${n}: claim “${c.text}” อ้างอิงค่าประมาณจาก AI`, s.id, c.id);
+      // AI-extracted facts must be confirmed against the source before a script can rely on them.
+      else if (fact.status === "ai_estimate") block(`ฉากที่ ${n}: ${fact.label}เป็นข้อมูลที่ AI ดึงมา ยังไม่ได้ยืนยัน — กด “ยืนยันแล้ว” ในแท็บข้อเท็จจริงของสินค้าก่อน`, s.id, c.id);
       if (c.review_status !== "verified") block(`ฉากที่ ${n}: claim “${c.text}” ยังไม่ได้ตรวจ`, s.id, c.id);
     }
   }

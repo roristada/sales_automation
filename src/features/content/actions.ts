@@ -8,6 +8,7 @@ import { formatTHB } from "@/features/products/data-value";
 import { fieldStatus, type Provenance } from "@/features/products/schema";
 import type { Json } from "@/lib/supabase/database.types";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { checkFacts, MAX_DESCRIPTION_CHARS, MAX_EXTRACTED_FACTS } from "./fact-extract";
 import { claimFactKey, parseFactKey } from "./facts";
 import { loadFacts, loadStudio, PRODUCT_COLUMNS, type Db } from "./queries";
 import { DURATIONS, getTemplate, PLATFORMS, type StoryboardDraft, TEMPLATE_VERSION, type TemplateContext } from "./templates";
@@ -96,6 +97,62 @@ export async function deleteFact(productId: string, factId: string): Promise<Act
   const { error, count } = await supabase.from("product_facts").delete({ count: "exact" }).eq("id", factId);
   if (error) return { ok: false, error: dbError(error, "ลบ") };
   if (!count) return { ok: false, error: "ไม่พบข้อเท็จจริง หรือไม่มีสิทธิ์ลบ" };
+  revalidatePath(`/products/${productId}`);
+  return { ok: true, data: null };
+}
+
+const extractedSchema = z.object({
+  description: z.string().trim().min(1, "ไม่มีคำอธิบายสินค้า").max(MAX_DESCRIPTION_CHARS),
+  facts: z
+    .array(z.object({ label: z.string().trim().min(1).max(80), value: z.string().trim().min(1).max(300) }))
+    .min(1, "เลือกอย่างน้อย 1 ข้อ")
+    .max(MAX_EXTRACTED_FACTS, `เพิ่มได้ครั้งละไม่เกิน ${MAX_EXTRACTED_FACTS} ข้อ`),
+});
+
+/**
+ * Saves facts an AI pulled from the product description, as "ai_estimate": they can't back a
+ * script until confirmed. Re-checked here (duplicates, numbers missing from the description).
+ */
+export async function addExtractedFacts(productId: string, input: { description: string; facts: { label: string; value: string }[] }): Promise<ActionResult<{ added: number }>> {
+  if (!uuid.safeParse(productId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const parsed = extractedSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { supabase, user } = await requireUser();
+  const { data: product } = await supabase.from("products").select("product_url").eq("id", productId).maybeSingle();
+  if (!product) return { ok: false, error: "ไม่พบสินค้า" };
+  const { data: existing } = await supabase.from("product_facts").select("label, value").eq("product_id", productId);
+  const checked = checkFacts(parsed.data.facts, parsed.data.description, existing ?? []);
+  const bad = checked.find((f) => f.problem);
+  if (bad) return { ok: false, error: `“${bad.label}”: ${bad.problem}` };
+  const start = existing?.length ?? 0;
+  const { error } = await supabase.from("product_facts").insert(
+    checked.map((f, i) => ({
+      product_id: productId,
+      owner_id: user.id,
+      label: f.label,
+      value: f.value,
+      status: "ai_estimate",
+      source_url: product.product_url,
+      position: start + i,
+    })),
+  );
+  if (error) return { ok: false, error: dbError(error) };
+  revalidatePath(`/products/${productId}`);
+  return { ok: true, data: { added: checked.length } };
+}
+
+/** The user checked an AI-extracted fact against its source. */
+export async function confirmFact(productId: string, factId: string): Promise<ActionResult<null>> {
+  if (!uuid.safeParse(factId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const { supabase } = await requireUser();
+  const { data: fact } = await supabase.from("product_facts").select("status, source_url").eq("id", factId).maybeSingle();
+  if (!fact) return { ok: false, error: "ไม่พบข้อเท็จจริง" };
+  if (fact.status !== "ai_estimate") return { ok: true, data: null };
+  const { error } = await supabase
+    .from("product_facts")
+    .update({ status: fact.source_url ? "verified_source" : "user_provided" })
+    .eq("id", factId);
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath(`/products/${productId}`);
   return { ok: true, data: null };
 }

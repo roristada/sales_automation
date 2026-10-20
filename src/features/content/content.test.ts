@@ -102,11 +102,18 @@ function toV(templateId: string, c = ctx(), review = "verified") {
 describe("validateStoryboard", () => {
   it("approves a complete quick review once claims are verified", () => {
     const { sb, scenes } = toV("quick_review");
-    const issues = validateStoryboard(sb, scenes, facts);
+    // Once the AI-extracted 45 g fact is confirmed, nothing blocks approval.
+    const confirmed = facts.map((f) => (f.status === "ai_estimate" ? { ...f, status: "user_provided" as const } : f));
+    const issues = validateStoryboard(sb, scenes, confirmed);
     expect(issues.filter((i) => i.level === "block")).toEqual([]);
     expect(canApprove(issues)).toBe(true);
-    // the 45 g fact is an AI estimate → warning, not a block
-    expect(issues.some((i) => i.level === "warn" && i.message.includes("AI"))).toBe(true);
+  });
+
+  it("blocks claims on AI-extracted facts nobody has confirmed", () => {
+    const { sb, scenes } = toV("quick_review");
+    const issues = validateStoryboard(sb, scenes, facts);
+    expect(issues.some((i) => i.level === "block" && i.message.includes("AI ดึงมา ยังไม่ได้ยืนยัน"))).toBe(true);
+    expect(canApprove(issues)).toBe(false);
   });
 
   it("blocks unreviewed claims", () => {

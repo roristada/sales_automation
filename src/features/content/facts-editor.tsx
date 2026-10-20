@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -11,7 +11,8 @@ import { TrustBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DataStatus } from "@/features/products/schema";
-import { deleteFact, type FactFormState, saveFact } from "./actions";
+import { confirmFact, deleteFact, type FactFormState, saveFact } from "./actions";
+import { FactExtractDialog } from "./fact-extract-dialog";
 
 export interface FactRow {
   id: string;
@@ -59,8 +60,15 @@ function FactForm({ productId, fact, onDone }: { productId: string; fact?: FactR
 }
 
 /** Product facts list with add/edit/delete. Scripts may only state what is listed here. */
-export function FactsEditor({ productId, facts }: { productId: string; facts: FactRow[] }) {
+export function FactsEditor({ productId, productName, description, facts }: { productId: string; productName: string; description: string | null; facts: FactRow[] }) {
   const router = useRouter();
+  const unconfirmed = facts.filter((f) => f.status === "ai_estimate").length;
+  const confirm = async (f: FactRow) => {
+    const res = await confirmFact(productId, f.id).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+    if (!res.ok) return void toast.error(res.error);
+    toast.success(`ยืนยัน “${f.label}” แล้ว`);
+    router.refresh();
+  };
   const [editing, setEditing] = useState<string | "new" | null>(facts.length ? null : "new");
   const done = () => {
     setEditing(null);
@@ -69,6 +77,11 @@ export function FactsEditor({ productId, facts }: { productId: string; facts: Fa
 
   return (
     <div className="flex flex-col gap-3">
+      {unconfirmed > 0 && (
+        <Notice tone="warning">
+          {unconfirmed} ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน — เปิดหน้าสินค้าเทียบทีละข้อ ถูกต้องกด “ยืนยันแล้ว” ไม่ถูกให้แก้ไขหรือลบ สคริปต์ใช้ข้อที่ยังไม่ยืนยันไม่ได้
+        </Notice>
+      )}
       {facts.length > 0 && (
         <ul className="divide-y rounded-lg border bg-surface">
           {facts.map((f) =>
@@ -94,6 +107,11 @@ export function FactsEditor({ productId, facts }: { productId: string; facts: Fa
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">
+                  {f.status === "ai_estimate" && (
+                    <Button variant="outline" size="sm" onClick={() => confirm(f)} aria-label={`ยืนยัน ${f.label}`}>
+                      <CheckCircle2 aria-hidden /> ยืนยันแล้ว
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setEditing(f.id)} aria-label={`แก้ไข ${f.label}`}>
                     <Pencil aria-hidden /> แก้ไข
                   </Button>
@@ -119,13 +137,15 @@ export function FactsEditor({ productId, facts }: { productId: string; facts: Fa
           )}
         </ul>
       )}
-      {editing === "new" ? (
-        <FactForm productId={productId} onDone={done} />
-      ) : (
-        <Button variant="outline" className="self-start" onClick={() => setEditing("new")}>
-          <Plus aria-hidden /> เพิ่มข้อเท็จจริง
-        </Button>
-      )}
+      {editing === "new" && <FactForm productId={productId} onDone={done} />}
+      <div className="flex flex-wrap gap-2">
+        {editing !== "new" && (
+          <Button variant="outline" onClick={() => setEditing("new")}>
+            <Plus aria-hidden /> เพิ่มข้อเท็จจริง
+          </Button>
+        )}
+        <FactExtractDialog productId={productId} productName={productName} description={description} existing={facts.map((f) => ({ label: f.label, value: f.value }))} />
+      </div>
     </div>
   );
 }

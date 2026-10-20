@@ -117,3 +117,39 @@ test("content planning flow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "ฉบับร่าง (1)" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "อนุมัติแล้ว (1)" })).toBeVisible();
 });
+
+test("facts pulled from the description stay unconfirmed until checked", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "สร้างบัญชี" }).click();
+  await page.getByLabel("อีเมล").fill(`e2e-m3x-${run}@example.test`);
+  await page.getByLabel("รหัสผ่าน").fill("e2e-password-123");
+  await page.getByRole("button", { name: "สร้างบัญชี" }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+
+  await page.goto("/products/new");
+  await page.getByLabel(/ชื่อสินค้า/).fill(`หูฟัง Open Ear M3x ${run}`);
+  await page.getByLabel(/ลิงก์สินค้า/).fill(`https://shopee.co.th/product/7/${run}`);
+  await page.getByRole("button", { name: "บันทึกสินค้า" }).click();
+  await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}$/);
+  await page.getByRole("link", { name: "ข้อเท็จจริง", exact: true }).click();
+
+  await page.getByRole("button", { name: "ดึงจากรายละเอียด" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("1. คำอธิบายสินค้า").fill("หูฟังแบบหนีบหู\n- Bluetooth 6.1\n- กันน้ำ IP55\n- แบตเตอรี่ 7 ชั่วโมง\nเบสหนักที่สุด!!");
+  await dialog.getByRole("button", { name: "คัดลอกคำสั่ง" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("Bluetooth 6.1");
+  // What an AI chat might answer, including one invented number.
+  await dialog.getByLabel("2. วางคำตอบจาก AI").fill("ได้เลยครับ\nFACT: บลูทูธ | Bluetooth 6.1\nFACT: กันน้ำ | IP55\nFACT: แบตเตอรี่ | ใช้ได้ 10 ชั่วโมง");
+  await expect(dialog.getByText("ไม่เพิ่ม — ตัวเลข 10 ไม่มีในคำอธิบาย")).toBeVisible();
+  await dialog.getByRole("button", { name: "เพิ่ม 2 ข้อ" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await expect(page.getByText("2 ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน")).toBeVisible();
+  await expect(page.getByText("AI ประมาณการ")).toHaveCount(2);
+  await expect(page.getByText("ใช้ได้ 10 ชั่วโมง")).toHaveCount(0);
+  await page.getByRole("button", { name: "ยืนยัน บลูทูธ" }).click();
+  await expect(page.getByText("1 ข้อดึงมาโดย AI ยังไม่ได้ยืนยัน")).toBeVisible();
+  await page.getByRole("button", { name: "ยืนยัน กันน้ำ" }).click();
+  await expect(page.getByText(/ดึงมาโดย AI ยังไม่ได้ยืนยัน/)).toHaveCount(0);
+  await expect(page.getByText("AI ประมาณการ")).toHaveCount(0);
+});

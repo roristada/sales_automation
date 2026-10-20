@@ -311,14 +311,17 @@ function ScoreTab({ p, stale }: { p: Product & { provenance: Provenance }; stale
 /** Facts scripts may state about this product (M3). */
 async function FactsTab({ id }: { id: string }) {
   const { supabase } = await getCurrentUser();
-  const { data: facts, error } = await supabase!.from("product_facts").select("id, label, value, status, source_url").eq("product_id", id).order("position").order("created_at");
+  const [{ data: facts, error }, { data: product }] = await Promise.all([
+    supabase!.from("product_facts").select("id, label, value, status, source_url").eq("product_id", id).order("position").order("created_at"),
+    supabase!.from("products").select("name, description").eq("id", id).maybeSingle(),
+  ]);
   if (error) return <Notice tone="error">โหลดข้อเท็จจริงไม่สำเร็จ: {error.message}</Notice>;
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <p className="text-[13px] text-muted-foreground">
         สคริปต์จะพูดถึงคุณสมบัติของสินค้าได้เฉพาะที่อยู่ในรายการนี้ (และราคา ชื่อ หมวดหมู่ของสินค้า) ทุก claim ต้องอ้างอิงข้อเท็จจริงก่อนอนุมัติ — เขียนตามที่ตรวจสอบได้ และใส่ลิงก์แหล่งที่มาถ้ามี
       </p>
-      <FactsEditor productId={id} facts={facts ?? []} />
+      <FactsEditor productId={id} productName={product?.name ?? ""} description={product?.description ?? null} facts={facts ?? []} />
     </div>
   );
 }
