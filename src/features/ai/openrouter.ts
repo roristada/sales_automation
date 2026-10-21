@@ -364,3 +364,97 @@ export function estimateVideoUsd(pricing: Record<string, string>, seconds: numbe
   const image = withImage && imageKey ? Number(pricing[imageKey]) / (imageKey.startsWith("cents_") ? 100 : 1) : 0;
   return perSecond * seconds + (Number.isFinite(image) ? image : 0);
 }
+
+// ---------------------------------------------------------------------------
+// Speech (TTS) — https://openrouter.ai/docs/guides/overview/multimodal/tts
+// ---------------------------------------------------------------------------
+
+export interface SpeechModel {
+  id: string;
+  name: string;
+  /**
+   * As listed under `pricing`: most models charge `prompt` per input character; Gemini TTS
+   * charges per token (`prompt` text tokens, `completion` audio tokens); a few charge
+   * `completion` per second of audio.
+   */
+  prompt: number;
+  completion: number;
+}
+
+/** Speech-output models (`GET /models?output_modalities=speech`, public). */
+export async function listSpeechModels(opts?: Pick<RequestOptions, "fetchImpl">): Promise<SpeechModel[]> {
+  const { data } = await request<{ data: RawTextModel[] }>("/models?output_modalities=speech", { ...opts, auth: false, timeoutMs: 15_000 });
+  return data.map((m) => ({ id: m.id, name: m.name, prompt: Number(m.pricing.prompt), completion: Number(m.pricing.completion) }));
+}
+
+export interface SpeechInput {
+  model: string;
+  text: string;
+  /** Omitted when the model has a default voice. */
+  voice?: string | null;
+  /** Delivery directions (tone, pace); models that don't support them ignore them. */
+  instructions?: string | null;
+  fetchImpl?: typeof fetch;
+}
+
+export interface SpeechResult {
+  /** MP3 bytes. */
+  audio: Buffer;
+  generationId: string | null;
+}
+
+const MAX_SPEECH_BYTES = 20 * 1024 * 1024;
+
+/**
+ * `POST /audio/speech` — the body is the audio itself (MP3 asked for; the default is raw PCM).
+ * Never retried: each call is billed. Errors come back as JSON.
+ */
+export async function speak(input: SpeechInput): Promise<SpeechResult> {
+  const key = openRouterKey();
+  if (!key) throw new OpenRouterError("ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local");
+  const body: Record<string, unknown> = { model: input.model, input: input.text, response_format: "mp3" };
+  if (input.voice) body.voice = input.voice;
+  if (input.instructions) body.instructions = input.instructions;
+  let res: Response;
+  try {
+    res = await (input.fetchImpl ?? fetch)(`${base()}/audio/speech`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Sales Automation" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (e) {
+    const timedOut = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
+    throw new OpenRouterError(timedOut ? errorMessage(408) : "เชื่อมต่อ OpenRouter ไม่ได้ — ตรวจอินเทอร์เน็ต", null, true);
+  }
+  const type = res.headers.get("content-type") ?? "";
+  if (!res.ok || type.includes("json")) {
+    let detail: string | undefined;
+    try {
+      detail = ((await res.json()) as { error?: { message?: string } })?.error?.message;
+    } catch {
+      // not JSON
+    }
+    const status = res.ok ? 500 : res.status;
+    throw new OpenRouterError(errorMessage(status, detail), status, isRetryable(status));
+  }
+  if (!type.startsWith("audio/mpeg")) throw new OpenRouterError(`OpenRouter ส่งเสียงกลับมาเป็นชนิดที่ไม่รองรับ (${type || "ไม่ทราบชนิด"})`);
+  const audio = Buffer.from(await res.arrayBuffer());
+  if (!audio.length) throw new OpenRouterError("OpenRouter ส่งไฟล์เสียงว่างกลับมา");
+  if (audio.length > MAX_SPEECH_BYTES) throw new OpenRouterError("ไฟล์เสียงใหญ่เกินกำหนด");
+  return { audio, generationId: res.headers.get("x-generation-id") };
+}
+
+/**
+ * `GET /generation?id=` — the billed cost of a finished generation, USD. Null while OpenRouter
+ * hasn't recorded it yet (it can take a few seconds) or when the lookup fails.
+ */
+export async function getGenerationCost(id: string, opts?: Pick<RequestOptions, "fetchImpl">): Promise<number | null> {
+  if (!/^[\w-]{1,200}$/.test(id)) return null;
+  try {
+    const { data } = await request<{ data: { total_cost?: number | null } }>(`/generation?id=${id}`, { ...opts, timeoutMs: 10_000, retry: false });
+    return typeof data?.total_cost === "number" ? data.total_cost : null;
+  } catch {
+    return null;
+  }
+}

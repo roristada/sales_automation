@@ -1,4 +1,4 @@
-import { Film, ImageIcon } from "lucide-react";
+import { Film, ImageIcon, Music } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { NativeSelect } from "@/components/shared/field";
@@ -21,7 +21,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?
 export default async function AssetsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = one(sp.q).slice(0, 100);
-  const kind = ["image", "video"].includes(one(sp.kind)) ? one(sp.kind) : "";
+  const kind = ["image", "video", "audio"].includes(one(sp.kind)) ? one(sp.kind) : "";
   const review = one(sp.review) === "1";
 
   const { supabase } = await getCurrentUser();
@@ -69,6 +69,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
           <option value="">ทุกชนิด</option>
           <option value="image">รูป</option>
           <option value="video">วิดีโอ</option>
+          <option value="audio">เพลง/เสียง</option>
         </NativeSelect>
         <label className="flex h-10 items-center gap-2 text-[13px]">
           <input type="checkbox" name="review" value="1" defaultChecked={review} className="accent-primary" /> เฉพาะที่ต้องตรวจสิทธิ์
@@ -86,7 +87,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
       {error ? (
         <ErrorState title="โหลดคลังไฟล์ไม่สำเร็จ" description={error.message} />
       ) : !rows.length ? (
-        <EmptyState title={q || kind || review ? "ไม่พบไฟล์ที่ตรงกับตัวกรอง" : "ยังไม่มีไฟล์"} description="อัปโหลดรูปหรือคลิปที่คุณมีสิทธิ์ใช้ แล้วเลือกใช้ในฉากของสคริปต์" />
+        <EmptyState title={q || kind || review ? "ไม่พบไฟล์ที่ตรงกับตัวกรอง" : "ยังไม่มีไฟล์"} description="อัปโหลดรูป คลิป หรือเพลงที่คุณมีสิทธิ์ใช้ แล้วเลือกใช้ในฉากของสคริปต์หรือเป็นเพลงประกอบตอน render" />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="ไฟล์ในคลัง">
           {rows.map(({ a, verdict }) => {
@@ -97,13 +98,23 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                   {a.kind === "image" ? (
                     // eslint-disable-next-line @next/next/no-img-element -- private, auth-checked file route
                     <img src={`/api/assets/${a.id}`} alt={a.name} loading="lazy" className="absolute inset-0 h-full w-full object-contain" />
+                  ) : a.kind === "audio" ? (
+                    <div className="absolute inset-0 flex items-center justify-center px-3">
+                      <audio src={`/api/assets/${a.id}`} controls preload="none" className="w-full" aria-label={a.name} />
+                    </div>
                   ) : (
                     <video src={`/api/assets/${a.id}#t=0.1`} preload="metadata" muted className="absolute inset-0 h-full w-full object-contain" aria-label={a.name} />
                   )}
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 p-3 text-[13px]">
                   <p className="flex items-start gap-1.5 font-medium">
-                    {a.kind === "image" ? <ImageIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="รูป" /> : <Film className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="วิดีโอ" />}
+                    {a.kind === "image" ? (
+                      <ImageIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="รูป" />
+                    ) : a.kind === "audio" ? (
+                      <Music className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="เพลง" />
+                    ) : (
+                      <Film className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="วิดีโอ" />
+                    )}
                     <span className="line-clamp-2 break-all">{a.name}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">

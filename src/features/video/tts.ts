@@ -1,23 +1,13 @@
+import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import type { SourceConnection } from "@/features/sources/types";
 
 /**
- * Thai voice-over (PLAN.md §2 TtsProvider). Not configured yet: videos render silent (with a
- * silent AAC track so every platform accepts the file) and timing uses the speech estimate.
- * A provider returns audio per scene; its measured length then drives the timeline.
+ * Thai voice-over status (AI-5): spoken through OpenRouter TTS by the render worker when the
+ * user ticks it on a render (worker/voiceover.ts). Without it videos render with Thai subtitles
+ * only (and a silent AAC track so every platform accepts the file).
  */
-export interface TtsProvider {
-  key: string;
-  label: string;
-  connection(): SourceConnection;
-  /** Writes speech for `text` to `outPath` and returns its duration in seconds. */
-  synthesize(input: { text: string; voice: string; outPath: string }): Promise<{ seconds: number }>;
+export function ttsStatus(): SourceConnection {
+  return isOpenRouterConfigured()
+    ? { state: "available", note: "ใช้ OpenRouter TTS — เลือก “ใส่เสียงพากย์ AI” ตอน render · จังหวะแต่ละฉากตามความยาวเสียงจริง · เลือกโมเดล/เสียงในหน้าตั้งค่า" }
+    : { state: "not_connected", note: "ยังไม่ได้ตั้ง OPENROUTER_API_KEY — วิดีโอไม่มีเสียงพากย์ (มีซับไทย) และจังหวะมาจากการประมาณความยาวคำพูด" };
 }
-
-export function getTtsProvider(): TtsProvider | null {
-  return null;
-}
-
-export const TTS_STATUS: SourceConnection = {
-  state: "not_connected",
-  note: "ยังไม่ได้เชื่อมต่อเสียงพากย์ — วิดีโอเป็นแบบไม่มีเสียงพากย์ (มีซับไทย) และจังหวะมาจากการประมาณความยาวคำพูด",
-};

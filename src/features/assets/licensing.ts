@@ -51,11 +51,16 @@ export function licenseVerdict(a: LicenseInput): LicenseVerdict {
   return { level: "ok", message: a.ai_generated ? "ใช้ได้ (สร้างด้วย AI — บางแพลตฟอร์มให้ติดป้ายเนื้อหา AI)" : "ใช้ได้" };
 }
 
-export const ACCEPTED_TYPES: Record<string, { kind: "image" | "video"; ext: string; maxBytes: number }> = {
+export const ACCEPTED_TYPES: Record<string, { kind: "image" | "video" | "audio"; ext: string; maxBytes: number }> = {
   "image/jpeg": { kind: "image", ext: "jpg", maxBytes: 20 * 1024 * 1024 },
   "image/png": { kind: "image", ext: "png", maxBytes: 20 * 1024 * 1024 },
   "image/webp": { kind: "image", ext: "webp", maxBytes: 20 * 1024 * 1024 },
   "video/mp4": { kind: "video", ext: "mp4", maxBytes: 200 * 1024 * 1024 },
   "video/quicktime": { kind: "video", ext: "mov", maxBytes: 200 * 1024 * 1024 },
   "video/webm": { kind: "video", ext: "webm", maxBytes: 200 * 1024 * 1024 },
+  // Background music (AI-5), chosen per render.
+  "audio/mpeg": { kind: "audio", ext: "mp3", maxBytes: 50 * 1024 * 1024 },
+  "audio/mp4": { kind: "audio", ext: "m4a", maxBytes: 50 * 1024 * 1024 },
+  "audio/x-m4a": { kind: "audio", ext: "m4a", maxBytes: 50 * 1024 * 1024 },
+  "audio/wav": { kind: "audio", ext: "wav", maxBytes: 50 * 1024 * 1024 },
 };

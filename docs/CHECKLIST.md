@@ -192,3 +192,14 @@ Not done in AI-3: a real clip through OpenRouter (acceptance) and the 3-model co
 - [x] Tests — unit 145 ✅, RLS 24 ✅, e2e 15 specs ✅ (`ai3.spec.ts`: render blocked without an approved clip → approve a seeded test clip → real worker render passes QA with the clip → caption has the AI note; frames checked by eye: scene 1 shows the clip, others the product card)
 
 Not done in AI-4: scene transitions beyond the template's own (cut/fade/slide per scene); an on-video "AI" badge (only the caption note for now).
+
+## AI-5 — Thai voice-over + music 🚧 code + tests done, voices not yet compared by ear (needs OpenRouter credit) (2026-10-22)
+- [x] OpenRouter TTS client (`speak`: `POST /audio/speech`, MP3, voice + delivery instructions, never retried; `listSpeechModels`; `getGenerationCost`) per https://openrouter.ai/docs/guides/overview/multimodal/tts
+- [x] Settings: "เสียงพากย์" model from the live speech catalog (default `google/gemini-3.8-flash-tts`, prices shown per char / token / second; free `fish-audio/s2.1-pro-free:free` is listed) and a voice name (`ai_settings.tts_voice`; empty = Kore for Gemini)
+- [x] Render panel: "ใส่เสียงพากย์ AI" with model, voice and estimate; spend guard (caps, per-video cap, confirm threshold) before queuing — cached lines count as free
+- [x] Worker (`worker/voiceover.ts`): speaks each narrated scene once per (model, voice, delivery, text), measures with ffprobe, stores in `tts_cache` (worker-written, owner-readable), logs every billed call in `ai_requests` (cost from OpenRouter when recorded, else the catalog estimate) — also the calls before a failure; scenes last as long as their line + 0.35 s; QA check "เสียงพากย์" (error level when asked for)
+- [x] Music: MP3/M4A/WAV in the asset library (kind `audio`, license rules as for images/clips; can't be a scene's picture — DB trigger); picked per render, looped under the voice (volume 0.12, 0.35 alone); QA check "เพลงประกอบ"
+- [x] Tests — unit 153 ✅, RLS 29 ✅ (`ai-voice.test.ts`: fake OpenRouter serving ffmpeg MP3s → cache, reuse, failure logging, RLS; real worker render with voice + music: duration follows the spoken lengths, audio not silent), e2e 16 specs ✅ (`ai5.spec.ts`: voice settings, music upload, render with music passes QA)
+- [x] Real call to the free Fish model works through `speak()` (7.3 s for a 44-character Thai line); Gemini returns 402 until credit is added
+
+Not done in AI-5: listening to Gemini vs ElevenLabs v4 vs Fish (free) in Thai and choosing the default — needs credit (Fish is free now); per-word subtitle timing (cues still split the scene by text length).

@@ -176,6 +176,7 @@ export type Database = {
           models: NonNullable<Json>;
           owner_id: string;
           per_video_cap_thb: number | null;
+          tts_voice: string | null;
           updated_at: string;
         };
         ComputedFields: never;
@@ -184,6 +185,7 @@ export type Database = {
           models?: NonNullable<Json>;
           owner_id?: string;
           per_video_cap_thb?: number | null;
+          tts_voice?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -191,6 +193,7 @@ export type Database = {
           models?: NonNullable<Json>;
           owner_id?: string;
           per_video_cap_thb?: number | null;
+          tts_voice?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -1491,6 +1494,46 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      tts_cache: {
+        Row: {
+          cache_key: string;
+          created_at: string;
+          duration_s: number;
+          id: string;
+          mime: string;
+          model: string;
+          owner_id: string;
+          storage_key: string;
+          text_chars: number;
+          voice: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          cache_key: string;
+          created_at?: string;
+          duration_s: number;
+          id?: string;
+          mime: string;
+          model: string;
+          owner_id: string;
+          storage_key: string;
+          text_chars: number;
+          voice?: string | null;
+        };
+        Update: {
+          cache_key?: string;
+          created_at?: string;
+          duration_s?: number;
+          id?: string;
+          mime?: string;
+          model?: string;
+          owner_id?: string;
+          storage_key?: string;
+          text_chars?: number;
+          voice?: string | null;
+        };
+        Relationships: [];
       };
       usage_events: {
         Row: {

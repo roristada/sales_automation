@@ -17,7 +17,21 @@ export interface TaskChoice {
   options: { id: string; label: string }[];
 }
 
-export function AiSettingsForm({ tasks, perVideoCap, confirmOver, catalogError }: { tasks: TaskChoice[]; perVideoCap: number | null; confirmOver: number; catalogError?: string }) {
+export function AiSettingsForm({
+  tasks,
+  ttsVoice,
+  ttsVoiceHint,
+  perVideoCap,
+  confirmOver,
+  catalogError,
+}: {
+  tasks: TaskChoice[];
+  ttsVoice: string;
+  ttsVoiceHint: string;
+  perVideoCap: number | null;
+  confirmOver: number;
+  catalogError?: string;
+}) {
   const [state, action, pending] = useActionState<AiSettingsState, FormData>(saveAiSettings, {});
   return (
     <form action={action} className="flex max-w-2xl flex-col gap-4" noValidate>
@@ -39,6 +53,9 @@ export function AiSettingsForm({ tasks, perVideoCap, confirmOver, catalogError }
           </Field>
         ))}
       </div>
+      <Field id="tts_voice" label="เสียงพากย์ (ชื่อเสียง)" optional hint={ttsVoiceHint} error={state.fieldErrors?.tts_voice}>
+        {(a) => <Input {...a} name="tts_voice" defaultValue={ttsVoice} className="max-w-xs" autoComplete="off" spellCheck={false} />}
+      </Field>
       <div className="grid max-w-md gap-4 sm:grid-cols-2">
         <Field id="per_video_cap_thb" label="เพดานต่อวิดีโอ (บาท)" optional hint="เว้นว่าง = ไม่จำกัด" error={state.fieldErrors?.per_video_cap_thb}>
           {(a) => <Input {...a} name="per_video_cap_thb" type="number" inputMode="decimal" min={0} step="any" defaultValue={perVideoCap ?? ""} />}

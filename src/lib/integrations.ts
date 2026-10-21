@@ -2,7 +2,7 @@ import "server-only";
 
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { LLM_STATUS } from "@/features/content/llm";
-import { TTS_STATUS } from "@/features/video/tts";
+import { ttsStatus } from "@/features/video/tts";
 import { getSourceAdapter } from "@/features/sources/registry";
 import { TREND_ADAPTERS } from "@/features/sources/trends";
 import type { ConnectionState } from "@/features/sources/types";
@@ -43,11 +43,11 @@ export function getIntegrationStatuses(): IntegrationStatus[] {
       note: "เชื่อมต่อแล้ว (หน้านี้โหลดข้อมูลจาก Supabase ได้)",
     },
     {
-      key: "google_tts",
+      key: "tts",
       name: "เสียงพากย์ (TTS)",
       purpose: "สร้างเสียงพากย์ภาษาไทย",
-      state: FROM_SOURCE[TTS_STATUS.state],
-      note: TTS_STATUS.note,
+      state: FROM_SOURCE[ttsStatus().state],
+      note: ttsStatus().note,
     },
     sourceStatus("shopee_affiliate", "shopee", "Shopee Affiliate", "ดึงข้อมูลสินค้าและค่าคอม"),
     sourceStatus("tiktok_shop", "tiktok", "TikTok Shop Affiliate", "ดึงข้อมูลสินค้า"),

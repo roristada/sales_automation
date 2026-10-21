@@ -1,23 +1,24 @@
-import type { TextModel, VideoModel } from "./openrouter";
+import type { SpeechModel, TextModel, VideoModel } from "./openrouter";
 
 /**
  * AI tasks and their default models (docs/AI_VIDEO_PLAN.md §4). Model ids are only defaults: the
  * user picks per task in Settings from the live catalog, and a pick that disappears from the
  * catalog is flagged instead of silently replaced.
  */
-export const AI_TASKS = ["script", "extract", "scene_prompt", "review", "video_product", "video_lifestyle"] as const;
+export const AI_TASKS = ["script", "extract", "scene_prompt", "review", "video_product", "video_lifestyle", "tts"] as const;
 export type AiTask = (typeof AI_TASKS)[number];
 
-export const TASK_KIND: Record<AiTask, "text" | "video"> = {
+export const TASK_KIND: Record<AiTask, "text" | "video" | "speech"> = {
   script: "text",
   extract: "text",
   scene_prompt: "text",
   review: "text",
   video_product: "video",
   video_lifestyle: "video",
+  tts: "speech",
 };
 
-export const TASK_LABEL: Record<AiTask | "test" | "tts", string> = {
+export const TASK_LABEL: Record<AiTask | "test", string> = {
   test: "ทดสอบการเชื่อมต่อ",
   script: "เขียนสคริปต์",
   extract: "กรอกข้อมูล + ดึงข้อเท็จจริง",
@@ -35,6 +36,7 @@ export const TASK_HINT: Record<AiTask, string> = {
   review: "ต้องรับวิดีโอได้ · ช่วยคนตรวจ ไม่แทนคน",
   video_product: "ต้องรองรับ 9:16 และรูปสินค้าเป็นเฟรมแรก",
   video_lifestyle: "ต้องรองรับ 9:16",
+  tts: "ต้องพูดไทยได้ — ฟังเทียบก่อนเลือก",
 };
 
 export const DEFAULT_MODELS: Record<AiTask, string> = {
@@ -44,6 +46,7 @@ export const DEFAULT_MODELS: Record<AiTask, string> = {
   review: "z-ai/glm-5.3-flash",
   video_product: "kwaivgi/kling-v3.0-std",
   video_lifestyle: "google/veo-3.1-fast",
+  tts: "google/gemini-3.8-flash-tts",
 };
 
 /** The cheap model used by the paid connection test (a few hundred tokens ≈ ฿0.001). */
@@ -74,6 +77,11 @@ export function textModelsFor(task: AiTask, models: TextModel[]): TextModel[] {
     if (task === "review") return m.inputModalities.includes("video");
     return true;
   });
+}
+
+/** Speech models, cheapest first (free ones on top). */
+export function speechModelsFor(models: SpeechModel[]): SpeechModel[] {
+  return [...models].sort((a, b) => a.prompt + a.completion - (b.prompt + b.completion));
 }
 
 export function videoModelsFor(task: AiTask, models: VideoModel[]): VideoModel[] {

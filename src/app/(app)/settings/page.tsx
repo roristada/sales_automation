@@ -9,7 +9,8 @@ import { ago, formatBytes, LOW_DISK_BYTES, WORKER_STATE_LABEL, workerState } fro
 import { getIntegrationStatuses, type IntegrationState } from "@/lib/integrations";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { PROVIDER_LABEL, renderRateThbPerSecond } from "@/features/usage/budget";
-import { AI_TASKS, DEFAULT_MODELS, modelFor, TASK_HINT, TASK_KIND, TASK_LABEL, textModelsFor, textPriceLabel, usdThbRate, usdToThb, videoModelsFor } from "@/features/ai/models";
+import { AI_TASKS, DEFAULT_MODELS, modelFor, speechModelsFor, TASK_HINT, TASK_KIND, TASK_LABEL, textModelsFor, textPriceLabel, usdThbRate, usdToThb, videoModelsFor } from "@/features/ai/models";
+import { GEMINI_VOICES, speechPriceLabel, voiceFor } from "@/features/ai/voiceover";
 import { videoPricePerSecond } from "@/features/ai/openrouter";
 import { getAccountStatus, getAiSettings, getCatalog } from "@/features/ai/queries";
 import { AiSettingsForm, type TaskChoice, TestAiButton } from "./ai-form";
@@ -77,10 +78,12 @@ export default async function SettingsPage() {
             .filter((m) => !m.id.endsWith(":batch"))
             .sort((a, b) => a.prompt + a.completion - (b.prompt + b.completion))
             .map((m) => ({ id: m.id, label: `${m.name} · ${textPriceLabel(m)}` }))
-        : videoModelsFor(task, catalog.video).map((m) => {
-            const perSecond = videoPricePerSecond(m.pricing);
-            return { id: m.id, label: `${m.name} · ${perSecond === null ? "ราคาตาม token" : `$${perSecond}/วินาที`}` };
-          });
+        : TASK_KIND[task] === "speech"
+          ? speechModelsFor(catalog.speech).map((m) => ({ id: m.id, label: `${m.name} · ${speechPriceLabel(m)}` }))
+          : videoModelsFor(task, catalog.video).map((m) => {
+              const perSecond = videoPricePerSecond(m.pricing);
+              return { id: m.id, label: `${m.name} · ${perSecond === null ? "ราคาตาม token" : `$${perSecond}/วินาที`}` };
+            });
     return { task, label: TASK_LABEL[task], hint, current, missing: !options.some((o) => o.id === current), options };
   });
   const baht = (n: number) => `฿${n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -131,7 +134,14 @@ export default async function SettingsPage() {
             </Chip>
           </div>
           <TestAiButton disabled={account.state !== "connected"} />
-          <AiSettingsForm tasks={tasks} perVideoCap={aiSettings.per_video_cap_thb} confirmOver={aiSettings.confirm_over_thb} catalogError={"error" in catalog ? catalog.error : undefined} />
+          <AiSettingsForm
+            tasks={tasks}
+            ttsVoice={aiSettings.ttsVoice ?? ""}
+            ttsVoiceHint={`ว่าง = ${voiceFor(modelFor("tts", aiSettings.models), null) ?? "เสียงเริ่มต้นของโมเดล"} · Gemini: ${GEMINI_VOICES.join(", ")} · ElevenLabs ใช้ voice ID`}
+            perVideoCap={aiSettings.per_video_cap_thb}
+            confirmOver={aiSettings.confirm_over_thb}
+            catalogError={"error" in catalog ? catalog.error : undefined}
+          />
           <div>
             <p className="mb-2 text-[13px] font-medium">การเรียก AI ล่าสุด</p>
             {aiLog?.length ? (

@@ -1,5 +1,5 @@
 import { loadFont } from "@remotion/google-fonts/NotoSansThai";
-import { AbsoluteFill, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Html5Audio, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { fitFontSize, SAFE, splitLabel, TEXT_WIDTH, words, ZONES } from "@/features/video/layout";
 import type { SceneMedia, TimelineScene, VideoProps } from "@/features/video/timeline";
 
@@ -298,6 +298,7 @@ export function AffiliateVideo(props: VideoProps) {
       {props.scenes.map((s) => (
         <Sequence key={s.id} from={s.from} durationInFrames={s.duration} name={`scene ${s.kind}`}>
           <SceneLayer scene={s} productName={props.productName} />
+          {s.audio && <Html5Audio src={s.audio} name="voice" />}
         </Sequence>
       ))}
       {props.cues.map((c, i) => (
@@ -315,6 +316,7 @@ export function AffiliateVideo(props: VideoProps) {
         {props.cta && <CtaButton text={props.cta} />}
         <Disclosure text={props.disclosure} />
       </Sequence>
+      {props.music && <Html5Audio src={props.music.src} volume={props.music.volume} loop name="music" />}
     </AbsoluteFill>
   );
 }

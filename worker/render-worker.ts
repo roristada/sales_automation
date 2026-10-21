@@ -16,6 +16,9 @@ import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { missingClipsMessage, resolveAiClips } from "@/features/ai/clips";
+import { usdToThb } from "@/features/ai/models";
+import { listSpeechModels, type SpeechModel } from "@/features/ai/openrouter";
+import { estimateVoiceoverUsd, MUSIC_VOLUME } from "@/features/ai/voiceover";
 import { licenseVerdict } from "@/features/assets/licensing";
 import { galleryList } from "@/features/products/schema";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
@@ -26,6 +29,7 @@ import { getStorage } from "@/features/video/storage";
 import { buildTimeline, RENDERER_VERSION, type SceneMedia, toSrt, toVtt, VIDEO, type VideoProps } from "@/features/video/timeline";
 import type { Database, Json, Tables } from "@/lib/supabase/database.types";
 import { tickAiClips } from "./ai-clips";
+import { parseTtsSettings, prepareVoiceover, sceneSecondsFor, VoiceoverError } from "./voiceover";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -222,7 +226,20 @@ async function loadPlan(job: Tables<"render_jobs">) {
       throw new RenderError("asset_license", `ฉากที่ ${s.position + 1}: ไฟล์ “${s.asset.name}” ${licenseVerdict(s.asset).message}`);
     }
   }
-  return { sb, product: product!, scenes, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
+  return { sb, productId: project!.product_id, product: product!, scenes, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
+}
+
+/**
+ * The job's background music. The asset id comes from the job settings (written by the owner),
+ * so ownership and kind are checked here: the worker reads with the service role.
+ */
+async function loadMusic(job: Tables<"render_jobs">, assetId: unknown) {
+  if (typeof assetId !== "string") return null;
+  const { data: a } = await db.from("assets").select("id, name, kind, mime, storage_key, license, attribution, source, ai_generated").eq("id", assetId).eq("owner_id", job.owner_id).maybeSingle();
+  if (!a || a.kind !== "audio") throw new RenderError("music_missing", "ไม่พบไฟล์เพลงที่เลือก (อาจถูกลบไปแล้ว) — เลือกใหม่แล้ว render อีกครั้ง");
+  const verdict = licenseVerdict(a);
+  if (verdict.level === "block") throw new RenderError("asset_license", `เพลง “${a.name}” ${verdict.message}`);
+  return { asset: a, verdict };
 }
 
 async function ffprobe(file: string): Promise<unknown> {
@@ -233,6 +250,19 @@ async function ffprobe(file: string): Promise<unknown> {
     if (code === "FFPROBE_FAILED") throw new RenderError("ffprobe_failed", `ffprobe ล้มเหลว: ${(e as Error).message}`);
     throw new RenderError("ffprobe_missing", `เรียก ffprobe ไม่ได้ (${code ?? (e as Error).message}) — ติดตั้ง FFmpeg หรือตั้ง FFPROBE_PATH`);
   }
+}
+
+function voiceCheck(tts: ReturnType<typeof parseTtsSettings>, voice: Awaited<ReturnType<typeof prepareVoiceover>> | null, scenes: { narration: string }[], audioCodec: string | null): QaCheck {
+  if (!tts || !voice) return { key: "voice", label: "เสียงพากย์", ok: false, detail: "ไม่ได้เลือกเสียงพากย์ — วิดีโอมีซับไทยอย่างเดียว จังหวะมาจากการประมาณ", level: "warn" };
+  const narrated = scenes.filter((s) => s.narration.trim()).length;
+  const cost = voice.generated ? ` · ฿${voice.costThb.toFixed(2)}` : "";
+  return {
+    key: "voice",
+    label: "เสียงพากย์",
+    ok: voice.byScene.size === narrated && !!audioCodec,
+    detail: `${tts.model}${tts.voice ? ` (${tts.voice})` : ""} · ${voice.byScene.size}/${narrated} ฉาก · สร้างใหม่ ${voice.generated} ใช้ซ้ำ ${voice.reused}${cost} — เสียง AI ฟังตรวจก่อนโพสต์`,
+    level: "error",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -254,22 +284,52 @@ async function processJob(job: Tables<"render_jobs">) {
   try {
     log(job.id, `เริ่มงาน (ครั้งที่ ${job.attempt}/${job.max_attempts})`);
     await update(job.id, { stage: "loading", progress: 0.02 });
-    const { sb, product, scenes, aiClipScenes, aiClipsExpected } = await loadPlan(job);
+    const { sb, productId, product, scenes, aiClipScenes, aiClipsExpected } = await loadPlan(job);
+    const jobSettings = (job.settings ?? {}) as Record<string, Json>;
+    const tts = parseTtsSettings(jobSettings.tts);
+    const music = await loadMusic(job, jobSettings.music_asset_id);
     const image = await loadImage(product.image_url);
     // Extra photos are optional: ones that fail to load are skipped and noted in QA.
     const extra = await Promise.all(galleryList(product.gallery_urls).slice(0, MAX_GALLERY_IMAGES).map((u) => loadImage(u)));
     const gallery = extra.flatMap((e) => (e.src ? [e.src] : []));
-    const base = scenes.some((s) => s.asset) ? await getAssetServer() : "";
+    // Spending cap, checked again here: limits or spend may have changed since queuing. The
+    // voice-over counts in full (cached lines would be free, so this errs on the safe side).
+    let speechModel: SpeechModel | undefined;
+    if (tts) speechModel = await listSpeechModels().then((ms) => ms.find((m) => m.id === tts.model)).catch(() => undefined);
+    const draft = buildTimeline({ productName: "", imageSrc: null, hook: "", cta: "", disclosure: "", scenes });
+    const estimate = estimateRenderCost(draft.durationInFrames / draft.fps) + (tts ? usdToThb(estimateVoiceoverUsd(speechModel, scenes.map((s) => s.narration))) : 0);
+    const [{ data: limits }, { data: spent }] = await Promise.all([
+      db.from("spending_limits").select("daily_thb, monthly_thb").eq("owner_id", job.owner_id).maybeSingle(),
+      db.rpc("spend_summary", { owner: job.owner_id }),
+    ]);
+    const budget = checkBudget(limits, { today_thb: Number(spent?.[0]?.today_thb ?? 0), month_thb: Number(spent?.[0]?.month_thb ?? 0) }, estimate);
+    if (!budget.ok) throw new RenderError("budget_exceeded", budget.message);
+
+    let voice: Awaited<ReturnType<typeof prepareVoiceover>> | null = null;
+    if (tts) {
+      await update(job.id, { stage: "voice", progress: 0.03 });
+      try {
+        voice = await prepareVoiceover(db, storage, { ownerId: job.owner_id, storyboardId: sb.id, productId, tts, scenes, catalog: speechModel, tmp });
+      } catch (e) {
+        if (e instanceof VoiceoverError) throw new RenderError("tts_failed", e.message, e.retryable);
+        throw e;
+      }
+      log(job.id, `เสียงพากย์: สร้างใหม่ ${voice.generated} ใช้ซ้ำ ${voice.reused} ฉาก`);
+    }
+
+    const base = scenes.some((s) => s.asset) || voice?.byScene.size || music ? await getAssetServer() : "";
     const tokens: string[] = [];
+    const serve = (key: string, mime: string) => {
+      const token = randomUUID();
+      served.set(token, { key, mime });
+      tokens.push(token);
+      return `${base}/${token}`;
+    };
     const withMedia = scenes.map((s) => {
       let media: SceneMedia | null = null;
-      if (s.asset) {
-        const token = randomUUID();
-        served.set(token, { key: s.asset.storage_key, mime: s.asset.mime });
-        tokens.push(token);
-        media = { kind: s.asset.kind as SceneMedia["kind"], src: `${base}/${token}`, durationS: s.asset.duration_s };
-      }
-      return { ...s, media };
+      if (s.asset) media = { kind: s.asset.kind as SceneMedia["kind"], src: serve(s.asset.storage_key, s.asset.mime), durationS: s.asset.duration_s };
+      const line = voice?.byScene.get(s.id);
+      return { ...s, media, audio: line ? serve(line.storageKey, "audio/mpeg") : null, audioSeconds: line ? sceneSecondsFor(line) : undefined };
     });
     cleanups.push(() => tokens.forEach((t) => served.delete(t)));
     const props: VideoProps = buildTimeline({
@@ -280,16 +340,8 @@ async function processJob(job: Tables<"render_jobs">) {
       cta: sb.cta,
       disclosure: sb.disclosure,
       scenes: withMedia,
+      music: music ? { src: serve(music.asset.storage_key, music.asset.mime), volume: voice ? MUSIC_VOLUME.withVoice : MUSIC_VOLUME.alone } : null,
     });
-
-    // Spending cap, checked again here: limits or spend may have changed since queuing.
-    const estimate = estimateRenderCost(props.durationInFrames / props.fps);
-    const [{ data: limits }, { data: spent }] = await Promise.all([
-      db.from("spending_limits").select("daily_thb, monthly_thb").eq("owner_id", job.owner_id).maybeSingle(),
-      db.rpc("spend_summary", { owner: job.owner_id }),
-    ]);
-    const budget = checkBudget(limits, { today_thb: Number(spent?.[0]?.today_thb ?? 0), month_thb: Number(spent?.[0]?.month_thb ?? 0) }, estimate);
-    if (!budget.ok) throw new RenderError("budget_exceeded", budget.message);
 
     await update(job.id, { stage: "bundling", progress: 0.05 });
     const url = await getServeUrl();
@@ -304,7 +356,7 @@ async function processJob(job: Tables<"render_jobs">) {
       port: await freePort(),
       codec: "h264",
       audioCodec: "aac",
-      // No voice-over yet: a silent AAC track keeps the file valid for every platform.
+      // Without voice or music, a silent AAC track keeps the file valid for every platform.
       enforceAudioTrack: true,
       outputLocation: videoPath,
       inputProps: props,
@@ -346,7 +398,8 @@ async function processJob(job: Tables<"render_jobs">) {
         level: "warn",
       },
       { key: "disclosure", label: "เปิดเผยลิงก์ affiliate", ok: props.disclosure.includes("ค่าคอมมิชชัน"), detail: "แสดงในฉากปิดท้ายและซับไตเติล", level: "error" },
-      { key: "voice", label: "เสียงพากย์", ok: false, detail: "ยังไม่ได้เชื่อมต่อ TTS — วิดีโอไม่มีเสียงพากย์ จังหวะมาจากการประมาณ", level: "warn" },
+      voiceCheck(tts, voice, scenes, facts.audioCodec),
+      ...(music ? [{ key: "music", label: "เพลงประกอบ", ok: music.verdict.level === "ok", detail: `${music.asset.name} — ${music.verdict.message}`, level: "warn" as const }] : []),
     ]);
     if (!report.ok) {
       const failed = report.checks.filter((c) => !c.ok && c.level === "error").map((c) => `${c.label}: ${c.detail}`);

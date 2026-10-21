@@ -49,7 +49,7 @@ export async function loadStudio(db: Db, storyboardId: string): Promise<StudioBu
     db.from("products").select(PRODUCT_COLUMNS).eq("id", project.product_id).maybeSingle(),
     db.from("storyboard_scenes").select("*, claims:scene_claims(*)").eq("storyboard_id", storyboardId).order("position"),
     db.from("storyboards").select("id, version, status, created_at").eq("project_id", project.id).order("version", { ascending: false }),
-    db.from("assets").select("id, name, kind, license, attribution, source, ai_generated, duration_s, product_id").order("created_at", { ascending: false }).limit(500),
+    db.from("assets").select("id, name, kind, license, attribution, source, ai_generated, duration_s, product_id").in("kind", ["image", "video"]).order("created_at", { ascending: false }).limit(500),
   ]);
   const assets = assetRows ?? [];
   const assetById = new Map(assets.map((a) => [a.id, a]));

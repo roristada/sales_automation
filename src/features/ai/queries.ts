@@ -4,19 +4,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { type AiSpendSettings, DEFAULT_AI_SPEND } from "./budget";
 import { type AiTask, parseModelPicks, usdToThb } from "./models";
-import { type ChatResult, getKeyInfo, isOpenRouterConfigured, type KeyInfo, listTextModels, listVideoModels, OpenRouterError, type TextModel, type VideoModel } from "./openrouter";
+import { type ChatResult, getKeyInfo, isOpenRouterConfigured, type KeyInfo, listSpeechModels, listTextModels, listVideoModels, OpenRouterError, type SpeechModel, type TextModel, type VideoModel } from "./openrouter";
 
 type Db = SupabaseClient<Database>;
 
 export interface AiSettings extends AiSpendSettings {
   models: Partial<Record<AiTask, string>>;
+  /** Null = the TTS model's default voice. */
+  ttsVoice: string | null;
 }
 
 export async function getAiSettings(supabase: Db): Promise<AiSettings> {
-  const { data } = await supabase.from("ai_settings").select("models, per_video_cap_thb, confirm_over_thb").maybeSingle();
-  if (!data) return { models: {}, ...DEFAULT_AI_SPEND };
+  const { data } = await supabase.from("ai_settings").select("models, per_video_cap_thb, confirm_over_thb, tts_voice").maybeSingle();
+  if (!data) return { models: {}, ttsVoice: null, ...DEFAULT_AI_SPEND };
   return {
     models: parseModelPicks(data.models),
+    ttsVoice: data.tts_voice,
     per_video_cap_thb: data.per_video_cap_thb === null ? null : Number(data.per_video_cap_thb),
     confirm_over_thb: Number(data.confirm_over_thb),
   };
@@ -36,13 +39,13 @@ export async function getAccountStatus(): Promise<AccountStatus> {
 
 // The catalogs are public and change slowly: cache per server process for an hour.
 const CATALOG_TTL_MS = 3_600_000;
-let catalog: { at: number; text: TextModel[]; video: VideoModel[] } | null = null;
+let catalog: { at: number; text: TextModel[]; video: VideoModel[]; speech: SpeechModel[] } | null = null;
 
-export async function getCatalog(): Promise<{ text: TextModel[]; video: VideoModel[] } | { error: string }> {
+export async function getCatalog(): Promise<{ text: TextModel[]; video: VideoModel[]; speech: SpeechModel[] } | { error: string }> {
   if (catalog && Date.now() - catalog.at < CATALOG_TTL_MS) return catalog;
   try {
-    const [text, video] = await Promise.all([listTextModels(), listVideoModels()]);
-    catalog = { at: Date.now(), text, video };
+    const [text, video, speech] = await Promise.all([listTextModels(), listVideoModels(), listSpeechModels()]);
+    catalog = { at: Date.now(), text, video, speech };
     return catalog;
   } catch (e) {
     return { error: e instanceof OpenRouterError ? e.message : "โหลดรายชื่อโมเดลไม่ได้" };
@@ -50,7 +53,7 @@ export async function getCatalog(): Promise<{ text: TextModel[]; video: VideoMod
 }
 
 export interface AiRequestLog {
-  task: AiTask | "test" | "tts";
+  task: AiTask | "test";
   model: string;
   productId?: string | null;
   storyboardId?: string | null;

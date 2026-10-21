@@ -25,6 +25,8 @@ import { modelFor, usdToThb } from "@/features/ai/models";
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { getAiSettings, getCatalog } from "@/features/ai/queries";
 import { SCENE_KIND_LABEL } from "@/features/content/templates";
+import { estimateVoiceoverUsd, voiceFor } from "@/features/ai/voiceover";
+import { licenseVerdict } from "@/features/assets/licensing";
 import { type ClipScene, ClipsPanel } from "@/features/video/clips-panel";
 
 export const metadata: Metadata = { title: "Video Studio" };
@@ -50,7 +52,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const { project } = sb;
   const product = project.product!;
   const aiReady = isOpenRouterConfigured();
-  const [{ data: scenes }, { data: jobs }, { data: pubs }, { data: plans }, { data: generations }, aiSettings, catalog] = await Promise.all([
+  const [{ data: scenes }, { data: jobs }, { data: pubs }, { data: plans }, { data: generations }, aiSettings, catalog, { data: tracks }] = await Promise.all([
     db.from("storyboard_scenes").select("id, kind, narration, on_screen_text, asset:assets(id, kind, duration_s)").eq("storyboard_id", storyboardId).order("position"),
     db.from("render_jobs").select("*, output:render_outputs(*)").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(20),
     db.from("publications").select("id, platform, status").eq("project_id", project.id).neq("status", "withdrawn").order("created_at"),
@@ -58,6 +60,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     db.from("scene_generations").select("*").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(200),
     getAiSettings(db),
     aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
+    db.from("assets").select("id, name, license, attribution, source, ai_generated, duration_s").eq("kind", "audio").order("created_at", { ascending: false }).limit(100),
   ]);
   const planOf = new Map((plans ?? []).map((p) => [p.scene_id, p]));
   const hasFrame = !!product.image_url && /^https?:\/\//i.test(product.image_url);
@@ -129,6 +132,21 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
         errorMessage: activeRow.error_message,
       }
     : null;
+  const ttsModel = modelFor("tts", aiSettings.models);
+  const ttsVoice = voiceFor(ttsModel, aiSettings.ttsVoice);
+  const ttsInfo = "error" in catalog ? undefined : catalog.speech.find((m) => m.id === ttsModel);
+  const voiceOption = aiReady
+    ? {
+        label: `${ttsModel}${ttsVoice ? ` · เสียง ${ttsVoice}` : ""}`,
+        estThb: usdToThb(estimateVoiceoverUsd(ttsInfo, (scenes ?? []).map((s) => s.narration))),
+        lastUsed: !!jobs?.[0] && (jobs[0].settings as { tts?: unknown } | null)?.tts !== "none" && !!(jobs[0].settings as { tts?: unknown } | null)?.tts,
+      }
+    : null;
+  const musicOptions = (tracks ?? []).map((t) => {
+    const v = licenseVerdict(t);
+    return { id: t.id, name: t.name, durationS: t.duration_s, level: v.level, message: v.message };
+  });
+  const lastMusic = (jobs?.[0]?.settings as { music_asset_id?: unknown } | null)?.music_asset_id;
   const latestDone = jobs?.find((j) => j.status === "completed" && j.output);
   const output = latestDone?.output ?? null;
   const report = output?.report as QaReport | undefined;
@@ -207,7 +225,15 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
           <section className="rounded-lg border bg-surface p-4">
             <h2 className="mb-3 font-semibold">Render</h2>
             {sb.status === "approved" ? (
-              <RenderPanel storyboardId={sb.id} active={active} hasOutput={!!output} workerOnline={worker === "unknown" ? null : worker === "online" || worker === "busy"} />
+              <RenderPanel
+                storyboardId={sb.id}
+                active={active}
+                hasOutput={!!output}
+                workerOnline={worker === "unknown" ? null : worker === "online" || worker === "busy"}
+                voice={voiceOption}
+                music={musicOptions}
+                lastMusicId={typeof lastMusic === "string" && musicOptions.some((m) => m.id === lastMusic) ? lastMusic : null}
+              />
             ) : (
               <p className="text-[13px] text-muted-foreground">อนุมัติสคริปต์ก่อน</p>
             )}

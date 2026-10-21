@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) return json({ error: "เลือกไฟล์ก่อน" }, 400);
   const type = ACCEPTED_TYPES[file.type];
-  if (!type) return json({ error: "รองรับเฉพาะ JPG, PNG, WebP, MP4, MOV, WebM" }, 400);
+  if (!type) return json({ error: "รองรับเฉพาะ JPG, PNG, WebP, MP4, MOV, WebM และเพลง MP3, M4A, WAV" }, 400);
   if (file.size > type.maxBytes) return json({ error: `ไฟล์ใหญ่เกิน ${type.maxBytes / 1024 / 1024} MB` }, 400);
 
   const meta = metaSchema.safeParse({
@@ -93,6 +93,7 @@ export async function POST(request: Request) {
       // ffprobe missing or unreadable file: keep the asset without dimensions.
     }
     if (type.kind === "video" && facts && !facts.videoCodec) return json({ error: "ไฟล์วิดีโอเสีย หรืออ่านไม่ได้" }, 400);
+    if (type.kind === "audio" && facts && !facts.audioCodec) return json({ error: "ไฟล์เสียงเสีย หรืออ่านไม่ได้" }, 400);
 
     const id = randomUUID();
     const key = `${user.id}/${id}/original.${type.ext}`;
@@ -106,9 +107,9 @@ export async function POST(request: Request) {
       mime: file.type,
       size_bytes: file.size,
       sha256,
-      width: facts?.width ?? null,
-      height: facts?.height ?? null,
-      duration_s: type.kind === "video" ? (facts?.durationS ?? null) : null,
+      width: type.kind === "audio" ? null : (facts?.width ?? null),
+      height: type.kind === "audio" ? null : (facts?.height ?? null),
+      duration_s: type.kind === "image" ? null : (facts?.durationS ?? null),
       source: meta.data.source,
       source_url: meta.data.source_url,
       license: meta.data.license,

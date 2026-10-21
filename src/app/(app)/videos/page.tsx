@@ -7,7 +7,7 @@ import { StatusBadge, type WorkflowStatus } from "@/components/shared/status-bad
 import { Button } from "@/components/ui/button";
 import { getTemplate } from "@/features/content/templates";
 import { formatAge, formatDateTime } from "@/features/products/data-value";
-import { TTS_STATUS } from "@/features/video/tts";
+import { ttsStatus } from "@/features/video/tts";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Video Studio" };
@@ -33,7 +33,7 @@ export default async function VideosPage() {
     <>
       <PageHeader title="Video Studio" description="ทำวิดีโอจากสคริปต์ที่อนุมัติแล้ว ดูตัวอย่าง render และดาวน์โหลด MP4 ซับไตเติล และภาพปก" />
       <Notice tone="info" className="mb-4">
-        {TTS_STATUS.note}
+        {ttsStatus().note}
       </Notice>
       {error ? (
         <ErrorState title="โหลดรายการไม่สำเร็จ" description={error.message} />

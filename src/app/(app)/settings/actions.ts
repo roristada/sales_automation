@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AI_TASKS, DEFAULT_MODELS, parseModelPicks, TEST_MODEL, usdToThb } from "@/features/ai/models";
+import { VOICE_PATTERN } from "@/features/ai/voiceover";
 import { chat, isOpenRouterConfigured, OpenRouterError } from "@/features/ai/openrouter";
 import { logAiRequest } from "@/features/ai/queries";
 import { checkBudget } from "@/features/usage/budget";
@@ -60,21 +61,26 @@ export async function saveSpendingLimits(_prev: LimitsState, formData: FormData)
 
 export interface AiSettingsState {
   error?: string;
-  fieldErrors?: Partial<Record<"per_video_cap_thb" | "confirm_over_thb", string>>;
+  fieldErrors?: Partial<Record<"per_video_cap_thb" | "confirm_over_thb" | "tts_voice", string>>;
   message?: string;
 }
 
 const aiSpendSchema = z.object({
   per_video_cap_thb: money,
   confirm_over_thb: z.coerce.number({ error: "ต้องเป็นตัวเลข" }).min(0, "ต้องไม่ติดลบ").max(10_000_000, "มากเกินไป"),
+  tts_voice: z
+    .string()
+    .trim()
+    .transform((s) => s || null)
+    .pipe(z.string().regex(VOICE_PATTERN, "ใช้ได้เฉพาะตัวอักษรอังกฤษ ตัวเลข และ _ . : -").nullable()),
 });
 
 /** Model per AI task (from the catalog dropdowns), per-video cap and confirm threshold. */
 export async function saveAiSettings(_prev: AiSettingsState, formData: FormData): Promise<AiSettingsState> {
-  const parsed = aiSpendSchema.safeParse({ per_video_cap_thb: formData.get("per_video_cap_thb") ?? "", confirm_over_thb: formData.get("confirm_over_thb") ?? "" });
+  const parsed = aiSpendSchema.safeParse({ per_video_cap_thb: formData.get("per_video_cap_thb") ?? "", confirm_over_thb: formData.get("confirm_over_thb") ?? "", tts_voice: formData.get("tts_voice") ?? "" });
   if (!parsed.success) {
     const fe: AiSettingsState["fieldErrors"] = {};
-    for (const i of parsed.error.issues) fe[i.path[0] as "confirm_over_thb"] ??= i.message;
+    for (const i of parsed.error.issues) fe[i.path[0] as "confirm_over_thb" | "tts_voice"] ??= i.message;
     return { fieldErrors: fe };
   }
   const picks = Object.fromEntries(AI_TASKS.map((t) => [t, formData.get(`model_${t}`)]).filter(([, v]) => typeof v === "string" && v));

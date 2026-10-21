@@ -2,8 +2,8 @@ import { estimateSceneSeconds } from "@/features/content/validate";
 
 /**
  * Turns an approved storyboard into a frame-exact video plan: scene timing, subtitle cues and the
- * end card. Without TTS (current setup) timing comes from the Thai speech estimate; with TTS it
- * will come from measured audio length (`audioSeconds`).
+ * end card. With a voice-over (AI-5) each scene lasts as long as its spoken line (`audioSeconds`);
+ * without one, timing comes from the Thai speech estimate.
  */
 
 export const VIDEO = { width: 1080, height: 1920, fps: 30 } as const;
@@ -38,6 +38,8 @@ export interface TimelineScene {
   badge: string | null;
   /** 0, 1, 2… — alternates entrance side and camera move between scenes. */
   index: number;
+  /** Spoken narration for this scene (MP3 URL); null = silent. */
+  audio: string | null;
 }
 
 export interface SubtitleCue {
@@ -64,6 +66,8 @@ export interface VideoProps {
   scenes: TimelineScene[];
   cues: SubtitleCue[];
   endCard: { from: number; duration: number };
+  /** Background music, looped for the whole video; null = none. */
+  music: { src: string; volume: number } | null;
 }
 
 export interface TimelineInput {
@@ -74,7 +78,9 @@ export interface TimelineInput {
   hook: string;
   cta: string;
   disclosure: string;
-  scenes: { id: string; kind: string; narration: string; on_screen_text: string; audioSeconds?: number; media?: SceneMedia | null }[];
+  /** `audioSeconds`: how long the scene lasts with its voice line (audio length + a pause). */
+  scenes: { id: string; kind: string; narration: string; on_screen_text: string; audioSeconds?: number; audio?: string | null; media?: SceneMedia | null }[];
+  music?: { src: string; volume: number } | null;
 }
 
 /** Word-aware split of Thai/Latin text into lines of at most `max` characters. */
@@ -120,7 +126,7 @@ export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): Vi
     const badge = BADGE[s.kind] ? (s.kind === "price" ? BADGE.price : `${BADGE[s.kind]} ${counts[s.kind]}`) : null;
     // Photos advance only on scenes that show one, so a library clip doesn't skip a photo.
     const image = s.media || !images.length ? null : images[photo++ % images.length];
-    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null, image, badge, index });
+    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null, image, badge, index, audio: s.audio ?? null });
 
     // Cues share the scene time in proportion to their length, so long lines stay on longer.
     const lines = splitSubtitle(s.narration);
@@ -151,6 +157,7 @@ export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): Vi
     scenes,
     cues,
     endCard,
+    music: input.music ?? null,
   };
 }
 
