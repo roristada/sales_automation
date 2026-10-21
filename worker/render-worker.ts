@@ -16,9 +16,10 @@ import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import { missingClipsMessage, resolveAiClips } from "@/features/ai/clips";
-import { usdToThb } from "@/features/ai/models";
+import { checkAiSpend, DEFAULT_AI_SPEND } from "@/features/ai/budget";
+import { modelFor, parseModelPicks, usdToThb } from "@/features/ai/models";
 import { listSpeechModels, type SpeechModel } from "@/features/ai/openrouter";
-import { estimateVoiceoverUsd, MUSIC_VOLUME } from "@/features/ai/voiceover";
+import { estimateVoiceoverUsd, MUSIC_VOLUME, TTS_INSTRUCTIONS, voiceFor } from "@/features/ai/voiceover";
 import { licenseVerdict } from "@/features/assets/licensing";
 import { galleryList } from "@/features/products/schema";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
@@ -29,7 +30,7 @@ import { getStorage } from "@/features/video/storage";
 import { buildTimeline, RENDERER_VERSION, type SceneMedia, toSrt, toVtt, VIDEO, type VideoProps } from "@/features/video/timeline";
 import type { Database, Json, Tables } from "@/lib/supabase/database.types";
 import { tickAiClips } from "./ai-clips";
-import { parseTtsSettings, prepareVoiceover, sceneSecondsFor, VoiceoverError } from "./voiceover";
+import { prepareVoiceover, sceneSecondsFor, type TtsSettings, VoiceoverError } from "./voiceover";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -242,6 +243,27 @@ async function loadMusic(job: Tables<"render_jobs">, assetId: unknown) {
   return { asset: a, verdict };
 }
 
+/**
+ * The voice-over a job asked for. The job row is owner-writable, so it only says *whether* to
+ * speak: model and voice come from the owner's AI settings and the delivery from code, the same
+ * as when queuing (queueRender). Fails closed when the model isn't in the speech catalog.
+ */
+async function loadTts(job: Tables<"render_jobs">, requested: Json | undefined) {
+  if (!requested || requested === "none") return null;
+  const { data: s } = await db.from("ai_settings").select("models, tts_voice, per_video_cap_thb, confirm_over_thb").eq("owner_id", job.owner_id).maybeSingle();
+  const model = modelFor("tts", parseModelPicks(s?.models));
+  const tts: TtsSettings = { model, voice: voiceFor(model, s?.tts_voice), instructions: TTS_INSTRUCTIONS };
+  let catalog: SpeechModel | undefined;
+  try {
+    catalog = (await listSpeechModels()).find((m) => m.id === model);
+  } catch {
+    throw new RenderError("tts_catalog", "โหลดรายชื่อโมเดลเสียงจาก OpenRouter ไม่ได้ — จะลองใหม่", true);
+  }
+  if (!catalog) throw new RenderError("tts_model_missing", `ไม่พบโมเดลเสียง ${model} ใน catalog ของ OpenRouter — เลือกรุ่นใหม่ในหน้าตั้งค่า`);
+  const spend = { per_video_cap_thb: s ? (s.per_video_cap_thb === null ? null : Number(s.per_video_cap_thb)) : DEFAULT_AI_SPEND.per_video_cap_thb, confirm_over_thb: Number(s?.confirm_over_thb ?? DEFAULT_AI_SPEND.confirm_over_thb) };
+  return { tts, catalog, spend };
+}
+
 async function ffprobe(file: string): Promise<unknown> {
   try {
     return await runFfprobe(file);
@@ -252,7 +274,7 @@ async function ffprobe(file: string): Promise<unknown> {
   }
 }
 
-function voiceCheck(tts: ReturnType<typeof parseTtsSettings>, voice: Awaited<ReturnType<typeof prepareVoiceover>> | null, scenes: { narration: string }[], audioCodec: string | null): QaCheck {
+function voiceCheck(tts: TtsSettings | null, voice: Awaited<ReturnType<typeof prepareVoiceover>> | null, scenes: { narration: string }[], audioCodec: string | null): QaCheck {
   if (!tts || !voice) return { key: "voice", label: "เสียงพากย์", ok: false, detail: "ไม่ได้เลือกเสียงพากย์ — วิดีโอมีซับไทยอย่างเดียว จังหวะมาจากการประมาณ", level: "warn" };
   const narrated = scenes.filter((s) => s.narration.trim()).length;
   const cost = voice.generated ? ` · ฿${voice.costThb.toFixed(2)}` : "";
@@ -286,24 +308,30 @@ async function processJob(job: Tables<"render_jobs">) {
     await update(job.id, { stage: "loading", progress: 0.02 });
     const { sb, productId, product, scenes, aiClipScenes, aiClipsExpected } = await loadPlan(job);
     const jobSettings = (job.settings ?? {}) as Record<string, Json>;
-    const tts = parseTtsSettings(jobSettings.tts);
+    const voiceSetup = await loadTts(job, jobSettings.tts);
+    const tts = voiceSetup?.tts ?? null;
     const music = await loadMusic(job, jobSettings.music_asset_id);
     const image = await loadImage(product.image_url);
     // Extra photos are optional: ones that fail to load are skipped and noted in QA.
     const extra = await Promise.all(galleryList(product.gallery_urls).slice(0, MAX_GALLERY_IMAGES).map((u) => loadImage(u)));
     const gallery = extra.flatMap((e) => (e.src ? [e.src] : []));
-    // Spending cap, checked again here: limits or spend may have changed since queuing. The
-    // voice-over counts in full (cached lines would be free, so this errs on the safe side).
-    let speechModel: SpeechModel | undefined;
-    if (tts) speechModel = await listSpeechModels().then((ms) => ms.find((m) => m.id === tts.model)).catch(() => undefined);
+    // Spending caps, checked again here: limits or spend may have changed since queuing, and a
+    // job row can be written without going through queueRender. The voice-over counts in full
+    // (cached lines would be free, so this errs on the safe side) and goes through the AI guard,
+    // per-video cap included. The confirm step is the queuing UI's; only hard caps apply here.
+    const speechModel = voiceSetup?.catalog;
     const draft = buildTimeline({ productName: "", imageSrc: null, hook: "", cta: "", disclosure: "", scenes });
     const estimate = estimateRenderCost(draft.durationInFrames / draft.fps) + (tts ? usdToThb(estimateVoiceoverUsd(speechModel, scenes.map((s) => s.narration))) : 0);
-    const [{ data: limits }, { data: spent }] = await Promise.all([
+    const [{ data: limits }, { data: spent }, { data: logged }] = await Promise.all([
       db.from("spending_limits").select("daily_thb, monthly_thb").eq("owner_id", job.owner_id).maybeSingle(),
       db.rpc("spend_summary", { owner: job.owner_id }),
+      db.from("ai_requests").select("cost_thb").eq("storyboard_id", sb.id),
     ]);
-    const budget = checkBudget(limits, { today_thb: Number(spent?.[0]?.today_thb ?? 0), month_thb: Number(spent?.[0]?.month_thb ?? 0) }, estimate);
-    if (!budget.ok) throw new RenderError("budget_exceeded", budget.message);
+    const spentNow = { today_thb: Number(spent?.[0]?.today_thb ?? 0), month_thb: Number(spent?.[0]?.month_thb ?? 0) };
+    const guard = voiceSetup
+      ? checkAiSpend({ limits, spent: spentNow, settings: voiceSetup.spend, videoSpent: (logged ?? []).reduce((n, r) => n + Number(r.cost_thb), 0), estimate, confirmed: true })
+      : checkBudget(limits, spentNow, estimate);
+    if (!guard.ok) throw new RenderError("budget_exceeded", guard.message);
 
     let voice: Awaited<ReturnType<typeof prepareVoiceover>> | null = null;
     if (tts) {

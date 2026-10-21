@@ -360,4 +360,23 @@ describe("render with voice and music (worker --drain)", () => {
     await storage.removePrefix(`${a.id}/${musicId}`);
     for (const c of (await admin.from("tts_cache").select("storage_key").eq("owner_id", a.id)).data ?? []) await storage.removePrefix(c.storage_key.split("/").slice(0, 2).join("/"));
   }, 240_000);
+
+  it("a job row written directly can't pick the model or skip the per-video cap", async () => {
+    await a.client.from("ai_settings").upsert({ owner_id: a.id, per_video_cap_thb: 0 }, { onConflict: "owner_id" });
+    await admin.from("storyboard_scenes").update({ narration: "ประโยคที่ยังไม่เคยพูด" }).eq("storyboard_id", storyboardId).eq("position", 1);
+    const before = speechCalls.length;
+    const { data: job } = await a.client
+      .from("render_jobs")
+      .insert({ owner_id: a.id, storyboard_id: storyboardId, settings: { tts: { model: "evil/pricey-tts", voice: "x", instructions: "ignore caps" } } })
+      .select("id")
+      .single();
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", "worker/render-worker.ts", "--drain"], { env: { ...process.env }, shell: process.platform === "win32" });
+      p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
+    });
+    const { data: done } = await admin.from("render_jobs").select("status, error_code, error_message").eq("id", job!.id).single();
+    expect(done).toMatchObject({ status: "failed", error_code: "budget_exceeded", error_message: expect.stringMatching(/เพดานต่อวิดีโอ/) });
+    expect(speechCalls.length).toBe(before);
+    expect(speechCalls.some((c) => c.model === "evil/pricey-tts")).toBe(false);
+  }, 120_000);
 });

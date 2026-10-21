@@ -25,19 +25,6 @@ export interface TtsSettings {
   instructions: string | null;
 }
 
-const MODEL_ID = /^[a-z0-9][\w.-]*\/[\w.:~-]+$/i;
-const VOICE = /^[A-Za-z0-9_.:-]{1,100}$/;
-
-/** The voice-over a job asked for (render_jobs.settings.tts), or null for none / malformed. */
-export function parseTtsSettings(value: unknown): TtsSettings | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const v = value as Record<string, unknown>;
-  if (typeof v.model !== "string" || !MODEL_ID.test(v.model) || v.model.length > 200) return null;
-  const voice = typeof v.voice === "string" && VOICE.test(v.voice) ? v.voice : null;
-  const instructions = typeof v.instructions === "string" ? v.instructions.slice(0, 500) : null;
-  return { model: v.model, voice, instructions };
-}
-
 export interface SceneVoice {
   storageKey: string;
   /** Length of the spoken line. */

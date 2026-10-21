@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTimeline } from "@/features/video/timeline";
-import { parseTtsSettings, sceneSecondsFor } from "../../../worker/voiceover";
+import { sceneSecondsFor } from "../../../worker/voiceover";
 import { getGenerationCost, listSpeechModels, speak } from "./openrouter";
 import { estimateSpeechUsd, estimateVoiceoverUsd, speechPriceLabel, speechText, VOICE_PAD_S, voiceFor } from "./voiceover";
 import { speechCacheKey, speechStorageKey } from "./voiceover-key";
@@ -41,13 +41,6 @@ describe("voice-over pricing and voices", () => {
     expect(speechCacheKey(k)).toBe(speechCacheKey({ ...k }));
     for (const change of [{ voice: "Puck" }, { instructions: null }, { text: "สวัสดีค่ะ" }, { model: eleven.id }]) expect(speechCacheKey({ ...k, ...change })).not.toBe(speechCacheKey(k));
     expect(speechStorageKey("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBe("11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222/voice.mp3");
-  });
-
-  it("reads a job's voice settings defensively", () => {
-    expect(parseTtsSettings("none")).toBeNull();
-    expect(parseTtsSettings({ model: "../x" })).toBeNull();
-    expect(parseTtsSettings({ model: gemini.id, voice: "Kore; rm", instructions: 5 })).toEqual({ model: gemini.id, voice: null, instructions: null });
-    expect(parseTtsSettings({ model: gemini.id, voice: "Kore", instructions: "warm" })).toEqual({ model: gemini.id, voice: "Kore", instructions: "warm" });
   });
 });
 
