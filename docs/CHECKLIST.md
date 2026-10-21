@@ -204,3 +204,13 @@ Not done in AI-4: scene transitions beyond the template's own (cut/fade/slide pe
 - [x] Real call to the free Fish model works through `speak()` (7.3 s for a 44-character Thai line); Gemini returns 402 until credit is added
 
 Not done in AI-5: listening to Gemini vs ElevenLabs v4 vs Fish (free) in Thai and choosing the default — needs credit (Fish is free now); per-word subtitle timing (cues still split the scene by text length).
+
+## AI-6 — Several products at once + cost report ✅ (2026-10-22)
+- [x] "สร้างหลายวิดีโอ" (`/content/batch`): pick up to 10 products, template, platform, length; optional "ให้ AI เขียนสคริปต์ทุกงาน" with a batch AI budget. Items run one at a time from the page (claimed as `working`, stale after 5 min, so two tabs can't double-run); a failure stays with its product and can be retried; budget used up → the rest stay as template drafts
+- [x] Every script still waits for claim review + approval in Script Studio; "Render ทุกงานที่อนุมัติแล้ว" queues only approved scripts without a render, each through `queueRender` (caps, AI-clip rule, optional voice with its spend guard)
+- [x] `createProjectFromTemplate` shared by the new-project form and batches
+- [x] Reuse an approved AI clip of the same product in another script/version for free (`reuse_scene_clip`, security definer: owner, same product, approved script, scene planned as AI clip; becomes the scene's approved clip)
+- [x] Analytics: "ค่าใช้จ่ายจริงต่อวิดีโอ" — text / AI clips / voice (cost OpenRouter reported) + render estimate per content project, with confirmed commission; `project_costs()` now includes AI, so "สุทธิ" per video subtracts AI spend too; total AI spend incl. calls not tied to a video
+- [x] Tests — unit 155 ✅, RLS 33 ✅ (`ai-batch.test.ts`: batch ownership/links, clip reuse rules, AI in project costs), e2e 17 specs ✅ (`ai6.spec.ts`: batch of 2 drafted → approve one → render only that one, not twice → Analytics section); paid branch run once with E2E_PAID=1: DeepSeek wrote the batch script for real
+
+Not done in AI-6: generating AI clips for a whole batch in one click (clips are costly — still per scene in each Video Studio); fact extraction inside a batch (facts must be confirmed by hand before a script can cite them).

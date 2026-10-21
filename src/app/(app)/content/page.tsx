@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DataTable, Td, Th, Tr } from "@/components/shared/data-table";
@@ -26,11 +26,18 @@ export default async function ContentPage() {
         title="วางแผนคอนเทนต์"
         description="โปรเจกต์คอนเทนต์ของแต่ละสินค้า สร้างจาก template แล้วตรวจและอนุมัติใน Script Studio"
         actions={
-          <Button asChild>
-            <Link href="/content/new">
-              <Plus aria-hidden /> สร้างคอนเทนต์
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/content/batch">
+                <Layers aria-hidden /> สร้างหลายวิดีโอ
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/content/new">
+                <Plus aria-hidden /> สร้างคอนเทนต์
+              </Link>
+            </Button>
+          </div>
         }
       />
       {error ? (

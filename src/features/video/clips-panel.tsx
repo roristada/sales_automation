@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AI_CLIP_LABEL, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
-import { cancelSceneClip, planSceneVisuals, queueSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
+import { cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
 export interface ClipGeneration {
   id: string;
@@ -38,6 +38,12 @@ export interface ClipScene {
   generations: ClipGeneration[];
 }
 
+/** An approved clip of the same product in another script (version), reusable for free (AI-6). */
+export interface ReusableClip {
+  id: string;
+  label: string;
+}
+
 const thb = (n: number) => `฿${n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const TONE: Record<string, "neutral" | "info" | "success" | "danger" | "warning"> = { queued: "neutral", generating: "info", succeeded: "warning", failed: "danger", canceled: "neutral" };
 
@@ -45,7 +51,7 @@ const TONE: Record<string, "neutral" | "info" | "success" | "danger" | "warning"
  * AI clips per scene (docs/AI_VIDEO_PLAN.md AI-3): plan each scene (motion graphics or an AI clip
  * and its prompt), generate or regenerate one scene at a time, watch the result, approve or reject.
  */
-export function ClipsPanel({ storyboardId, scenes, aiReady, approved }: { storyboardId: string; scenes: ClipScene[]; aiReady: boolean; approved: boolean }) {
+export function ClipsPanel({ storyboardId, scenes, aiReady, approved, reusable = [] }: { storyboardId: string; scenes: ClipScene[]; aiReady: boolean; approved: boolean; reusable?: ReusableClip[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -82,19 +88,20 @@ export function ClipsPanel({ storyboardId, scenes, aiReady, approved }: { storyb
       {error && <Notice tone="error">{error}</Notice>}
       <ol className="flex flex-col gap-3">
         {scenes.map((s) => (
-          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}`} scene={s} approved={approved} />
+          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}`} scene={s} approved={approved} reusable={reusable} />
         ))}
       </ol>
     </div>
   );
 }
 
-function SceneClip({ scene, approved }: { scene: ClipScene; approved: boolean }) {
+function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: boolean; reusable: ReusableClip[] }) {
   const router = useRouter();
   const [v, setV] = useState(scene.plan);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [reuseId, setReuseId] = useState(reusable[0]?.id ?? "");
   const dirty = v.mode !== scene.plan.mode || v.video_task !== scene.plan.video_task || v.prompt !== scene.plan.prompt || v.duration_s !== scene.plan.duration_s;
   const latest = scene.generations[0];
   const inFlight = latest && (latest.status === "queued" || latest.status === "generating");
@@ -194,6 +201,23 @@ function SceneClip({ scene, approved }: { scene: ClipScene; approved: boolean })
             </Button>
           )}
         </div>
+        {v.mode === "ai_video" && !dirty && approved && !inFlight && reusable.length > 0 && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor={id("reuse")}>หรือใช้คลิปที่อนุมัติแล้วของสินค้านี้ (ฟรี)</Label>
+              <NativeSelect id={id("reuse")} value={reuseId} onChange={(e) => setReuseId(e.target.value)} className="max-w-full">
+                {reusable.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <Button type="button" size="sm" variant="outline" disabled={pending || !reuseId} onClick={() => act(() => reuseSceneClip(scene.id, reuseId), `ใช้คลิปเดิมในฉากที่ ${scene.n} แล้ว`)}>
+              ใช้คลิปนี้ซ้ำ
+            </Button>
+          </div>
+        )}
         {confirm && (
           <Notice tone="warning">
             {confirm}{" "}

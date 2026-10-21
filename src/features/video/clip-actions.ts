@@ -172,6 +172,21 @@ export async function reviewSceneClip(generationId: string, decision: "approved"
   return { ok: true, data: null };
 }
 
+/**
+ * Uses an approved clip of the same product (from another script or version) in this scene,
+ * without generating or paying again (AI-6). The DB function checks ownership, product and plan.
+ */
+export async function reuseSceneClip(sceneId: string, generationId: string): Promise<ActionResult<null>> {
+  if (!uuid.safeParse(sceneId).success || !uuid.safeParse(generationId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const { supabase } = await requireUser();
+  const { data: scene } = await supabase.from("storyboard_scenes").select("storyboard_id").eq("id", sceneId).maybeSingle();
+  if (!scene) return { ok: false, error: "ไม่พบฉาก" };
+  const { error } = await supabase.rpc("reuse_scene_clip", { target_scene: sceneId, source: generationId });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(videoPath(scene.storyboard_id));
+  return { ok: true, data: null };
+}
+
 export async function cancelSceneClip(generationId: string): Promise<ActionResult<null>> {
   if (!uuid.safeParse(generationId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
   const { supabase } = await requireUser();

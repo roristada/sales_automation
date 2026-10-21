@@ -233,16 +233,28 @@ const createSchema = z.object({
 });
 
 export async function createContentProject(_prev: CreateProjectState, formData: FormData): Promise<CreateProjectState> {
-  const parsed = createSchema.safeParse(Object.fromEntries(formData));
+  const res = await createProjectFromTemplate(Object.fromEntries(formData) as z.input<typeof createSchema>);
+  if (!res.ok) return "fieldErrors" in res ? { fieldErrors: res.fieldErrors } : { error: res.error };
+  redirect(studioPath(res.data.storyboardId));
+}
+
+/**
+ * A content project with its first draft, written from the template and the product's facts.
+ * Used by the new-project form and by batches (AI-6).
+ */
+export async function createProjectFromTemplate(
+  raw: Omit<z.input<typeof createSchema>, "title"> & { title?: string },
+): Promise<ActionResult<{ projectId: string; storyboardId: string }> | { ok: false; error: string; fieldErrors: NonNullable<CreateProjectState["fieldErrors"]> }> {
+  const parsed = createSchema.safeParse({ ...raw, title: raw.title ?? "" });
   if (!parsed.success) {
-    const fe: CreateProjectState["fieldErrors"] = {};
+    const fe: NonNullable<CreateProjectState["fieldErrors"]> = {};
     for (const i of parsed.error.issues) fe[i.path[0] as "title"] ??= i.message;
-    return { fieldErrors: fe };
+    return { ok: false, error: Object.values(fe)[0] ?? "ข้อมูลไม่ถูกต้อง", fieldErrors: fe };
   }
   const input = parsed.data;
   const { supabase, user } = await requireUser();
   const loaded = await templateContext(supabase, input.product_id, input.platform, input.target_duration_s);
-  if (!loaded) return { fieldErrors: { product_id: "ไม่พบสินค้า" } };
+  if (!loaded) return { ok: false, error: "ไม่พบสินค้า", fieldErrors: { product_id: "ไม่พบสินค้า" } };
   const template = getTemplate(input.template_id)!;
   const draft = template.build(loaded.ctx);
 
@@ -257,7 +269,7 @@ export async function createContentProject(_prev: CreateProjectState, formData: 
     })
     .select("id")
     .single();
-  if (error) return { error: dbError(error) };
+  if (error) return { ok: false, error: dbError(error) };
 
   const { data: sb, error: sbError } = await supabase
     .from("storyboards")
@@ -277,10 +289,10 @@ export async function createContentProject(_prev: CreateProjectState, formData: 
   const sceneError = sbError ? dbError(sbError) : await insertScenes(supabase, user.id, sb!.id, draft);
   if (sceneError) {
     await supabase.from("content_projects").delete().eq("id", project.id);
-    return { error: sceneError };
+    return { ok: false, error: sceneError };
   }
   revalidatePath("/content");
-  redirect(studioPath(sb!.id));
+  return { ok: true, data: { projectId: project.id, storyboardId: sb!.id } };
 }
 
 export async function deleteContentProject(id: string): Promise<ActionResult<null>> {

@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, Notice } from "@/components/shared/states";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AnalyticsUpload, DeleteImportButton, RematchButton } from "@/features/analytics/analytics-upload";
 import type { ConversionStatus } from "@/features/analytics/csv";
+import { videoCosts } from "@/features/analytics/costs";
 import { summarize } from "@/features/analytics/summary";
 import { type Platform, PLATFORM_LABEL } from "@/features/content/templates";
 import { formatDate, formatDateTime } from "@/features/products/data-value";
@@ -21,7 +22,7 @@ const NA = <span className="text-muted-foreground">ไม่มีข้อม�
 export default async function AnalyticsPage() {
   const { supabase } = await getCurrentUser();
   const db = supabase!;
-  const [pubs, metrics, conversions, costs, imports] = await Promise.all([
+  const [pubs, metrics, conversions, costs, imports, aiCalls, storyboards] = await Promise.all([
     db
       .from("publications")
       .select("id, project_id, platform, status, published_at, project:content_projects(title, product:products(name))")
@@ -31,8 +32,10 @@ export default async function AnalyticsPage() {
     db.from("affiliate_conversions").select("publication_id, status, commission_thb, order_value_thb").limit(20_000),
     db.rpc("project_costs"),
     db.from("performance_imports").select("id, kind, file_name, total_rows, saved_rows, matched_rows, failed_rows, created_at").order("created_at", { ascending: false }).limit(50),
+    db.from("ai_requests").select("storyboard_id, task, cost_thb, status").limit(20_000),
+    db.from("storyboards").select("id, project_id, project:content_projects(title, product:products(name))").limit(5000),
   ]);
-  const failed = [pubs, metrics, conversions, costs, imports].find((r) => r.error);
+  const failed = [pubs, metrics, conversions, costs, imports, aiCalls, storyboards].find((r) => r.error);
 
   const header = <PageHeader title="Analytics" description="ผลของวิดีโอจากไฟล์ที่ส่งออกจากแพลตฟอร์มและ Shopee Affiliate — แสดงเฉพาะตัวเลขที่มีในไฟล์" />;
   if (failed?.error) {
@@ -61,6 +64,19 @@ export default async function AnalyticsPage() {
     projectCosts: new Map((costs.data ?? []).map((c) => [c.project_id, Number(c.cost_thb)])),
   });
   const hasConversions = (conversions.data?.length ?? 0) > 0;
+
+  // AI-6: real cost per video — OpenRouter calls by kind + render estimate, against commission.
+  const projectOf = new Map((storyboards.data ?? []).map((s) => [s.id, s.project_id]));
+  const projectInfo = new Map((storyboards.data ?? []).map((s) => [s.project_id, s.project]));
+  const { byProject, untied } = videoCosts(
+    (aiCalls.data ?? []).map((c) => ({ storyboardId: c.storyboard_id, task: c.task, costThb: Number(c.cost_thb), status: c.status })),
+    projectOf,
+    new Map((costs.data ?? []).map((c) => [c.project_id, Number(c.cost_thb) - Number(c.ai_thb)])),
+  );
+  const commissionByProject = new Map<string, number>();
+  for (const p of pubs.data ?? []) commissionByProject.set(p.project_id, (commissionByProject.get(p.project_id) ?? 0) + (byPublication.get(p.id)?.commission.completed.commission ?? 0));
+  const costRows = [...byProject.values()].filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
+  const aiTotal = (aiCalls.data ?? []).reduce((n, c) => n + Number(c.cost_thb), 0);
   const hasMetrics = (metrics.data?.length ?? 0) > 0;
   // Videos worth a row: posted, or with any numbers attached.
   const rows = (pubs.data ?? [])
@@ -73,7 +89,8 @@ export default async function AnalyticsPage() {
     { label: "มาจากวิดีโอในระบบ", value: hasConversions ? thb(totals.attributed.completed.commission) : null, hint: hasConversions ? "จับคู่ด้วยรหัสติดตามใน Sub_id" : null },
     { label: "ไม่ระบุวิดีโอ", value: hasConversions ? thb(totals.unattributed.completed.commission) : null, hint: hasConversions ? "นับในยอดรวม ไม่นับให้วิดีโอใด" : null },
     { label: "รอยืนยัน", value: hasConversions ? thb(totals.all.pending.commission) : null, hint: hasConversions ? `${int(totals.all.pending.orders)} รายการ · อาจถูกยกเลิก` : null },
-    { label: "ค่าใช้จ่าย render (ประมาณ)", value: thb(totals.cost), hint: "จากบันทึกการใช้งาน" },
+    { label: "ค่าใช้จ่ายของวิดีโอ", value: thb(totals.cost), hint: "AI ตามที่ OpenRouter คิดจริง + render (ประมาณ)" },
+    { label: "ค่า AI ทั้งหมด", value: thb(aiTotal), hint: untied ? `${thb(untied)} ไม่ผูกกับวิดีโอ (เช่นดึงข้อเท็จจริง)` : "ทุกการเรียก OpenRouter" },
   ];
 
   return (
@@ -200,9 +217,76 @@ export default async function AnalyticsPage() {
           </DataTable>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          สุทธิ = ค่าคอมยืนยันแล้ว − ค่าใช้จ่าย render ของคอนเทนต์ แสดงเมื่อคอนเทนต์โพสต์แพลตฟอร์มเดียวและมีคำสั่งซื้อที่จับคู่ได้ · ยอดดูไม่ได้แปลว่ามีคนซื้อ และค่าคอมที่ “ไม่ระบุวิดีโอ”
+          สุทธิ = ค่าคอมยืนยันแล้ว − ค่าใช้จ่ายของคอนเทนต์ (AI + render) แสดงเมื่อคอนเทนต์โพสต์แพลตฟอร์มเดียวและมีคำสั่งซื้อที่จับคู่ได้ · ยอดดูไม่ได้แปลว่ามีคนซื้อ และค่าคอมที่ “ไม่ระบุวิดีโอ”
           อาจมาจากวิดีโอเหล่านี้ก็ได้
         </p>
+      </section>
+
+      <section aria-labelledby="costs-h" className="mb-10">
+        <SectionHeader id="costs-h" title="ค่าใช้จ่ายจริงต่อวิดีโอ" description="รวมทุกเวอร์ชันของคอนเทนต์ · AI ตามที่ OpenRouter คิดจริง (รวมครั้งที่ล้มเหลวถ้าถูกคิดเงิน) · render เป็นค่าประมาณ" />
+        {!costRows.length ? (
+          <EmptyState title="ยังไม่มีค่าใช้จ่าย" description="เมื่อใช้ AI เขียนสคริปต์ สร้างคลิป เสียงพากย์ หรือ render ในระบบคลาวด์ ค่าใช้จ่ายของแต่ละวิดีโอจะแสดงที่นี่" />
+        ) : (
+          <DataTable caption="ค่าใช้จ่ายจริงต่อวิดีโอ">
+            <thead>
+              <tr>
+                <Th>คอนเทนต์</Th>
+                <Th hideBelow="md" numeric>
+                  ข้อความ
+                </Th>
+                <Th hideBelow="sm" numeric>
+                  คลิป AI
+                </Th>
+                <Th hideBelow="md" numeric>
+                  เสียงพากย์
+                </Th>
+                <Th hideBelow="lg" numeric>
+                  render
+                </Th>
+                <Th numeric>รวม</Th>
+                <Th hideBelow="sm" numeric>
+                  ค่าคอมยืนยัน
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {costRows.map((r) => {
+                const info = projectInfo.get(r.projectId);
+                const commission = commissionByProject.get(r.projectId);
+                return (
+                  <Tr key={r.projectId}>
+                    <Td className="max-w-[320px]">
+                      <span className="line-clamp-2 font-medium">{info?.title ?? "(ลบแล้ว)"}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {info?.product?.name}
+                        {r.calls ? ` · เรียก AI ${int(r.calls)} ครั้ง` : ""}
+                        {r.failedCalls ? ` (ล้มเหลว ${int(r.failedCalls)})` : ""}
+                      </span>
+                    </Td>
+                    <Td hideBelow="md" numeric>
+                      {thb(r.text)}
+                    </Td>
+                    <Td hideBelow="sm" numeric>
+                      {thb(r.clips)}
+                    </Td>
+                    <Td hideBelow="md" numeric>
+                      {thb(r.voice)}
+                    </Td>
+                    <Td hideBelow="lg" numeric>
+                      {thb(r.render)}
+                    </Td>
+                    <Td numeric className="font-medium">
+                      {thb(r.total)}
+                    </Td>
+                    <Td hideBelow="sm" numeric>
+                      {hasConversions && commission !== undefined ? thb(commission) : NA}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </DataTable>
+        )}
       </section>
 
       <section aria-labelledby="imports-h">

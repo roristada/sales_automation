@@ -283,6 +283,119 @@ export type Database = {
           },
         ];
       };
+      content_batch_items: {
+        Row: {
+          batch_id: string;
+          cost_thb: number;
+          error: string | null;
+          id: string;
+          owner_id: string;
+          position: number;
+          product_id: string;
+          project_id: string | null;
+          status: string;
+          storyboard_id: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          batch_id: string;
+          cost_thb?: number;
+          error?: string | null;
+          id?: string;
+          owner_id?: string;
+          position: number;
+          product_id: string;
+          project_id?: string | null;
+          status?: string;
+          storyboard_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          batch_id?: string;
+          cost_thb?: number;
+          error?: string | null;
+          id?: string;
+          owner_id?: string;
+          position?: number;
+          product_id?: string;
+          project_id?: string | null;
+          status?: string;
+          storyboard_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "content_batch_items_batch_id_fkey";
+            columns: ["batch_id"];
+            isOneToOne: false;
+            referencedRelation: "content_batches";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "content_batch_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "content_batch_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "research_products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "content_batch_items_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "content_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "content_batch_items_storyboard_id_fkey";
+            columns: ["storyboard_id"];
+            isOneToOne: false;
+            referencedRelation: "storyboards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      content_batches: {
+        Row: {
+          budget_thb: number | null;
+          created_at: string;
+          id: string;
+          owner_id: string;
+          platform: string;
+          target_duration_s: number;
+          template_id: string;
+          use_ai: boolean;
+        };
+        ComputedFields: never;
+        Insert: {
+          budget_thb?: number | null;
+          created_at?: string;
+          id?: string;
+          owner_id?: string;
+          platform: string;
+          target_duration_s: number;
+          template_id: string;
+          use_ai?: boolean;
+        };
+        Update: {
+          budget_thb?: number | null;
+          created_at?: string;
+          id?: string;
+          owner_id?: string;
+          platform?: string;
+          target_duration_s?: number;
+          template_id?: string;
+          use_ai?: boolean;
+        };
+        Relationships: [];
+      };
       content_projects: {
         Row: {
           created_at: string;
@@ -1729,11 +1842,13 @@ export type Database = {
       project_costs: {
         Args: Record<PropertyKey, never>;
         Returns: {
+          ai_thb: number;
           cost_thb: number;
           project_id: string;
           renders: number;
         }[];
       };
+      reuse_scene_clip: { Args: { source: string; target_scene: string }; Returns: string };
       spend_summary: {
         Args: { owner?: string };
         Returns: {

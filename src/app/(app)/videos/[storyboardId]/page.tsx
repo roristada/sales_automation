@@ -27,7 +27,7 @@ import { getAiSettings, getCatalog } from "@/features/ai/queries";
 import { SCENE_KIND_LABEL } from "@/features/content/templates";
 import { estimateVoiceoverUsd, voiceFor } from "@/features/ai/voiceover";
 import { licenseVerdict } from "@/features/assets/licensing";
-import { type ClipScene, ClipsPanel } from "@/features/video/clips-panel";
+import { type ClipScene, ClipsPanel, type ReusableClip } from "@/features/video/clips-panel";
 
 export const metadata: Metadata = { title: "Video Studio" };
 
@@ -62,6 +62,19 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
     db.from("assets").select("id, name, license, attribution, source, ai_generated, duration_s").eq("kind", "audio").order("created_at", { ascending: false }).limit(100),
   ]);
+  // AI-6: approved clips of this product in its other scripts can be reused for free.
+  const { data: others } = await db
+    .from("scene_generations")
+    .select("id, prompt, duration_s, model, created_at, storyboard:storyboards!inner(version, project:content_projects!inner(title, product_id))")
+    .eq("review_status", "approved")
+    .neq("storyboard_id", storyboardId)
+    .eq("storyboard.project.product_id", product.id)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const reusable: ReusableClip[] = (others ?? []).map((g) => ({
+    id: g.id,
+    label: `${g.storyboard.project.title} v${g.storyboard.version} · ${g.duration_s} วิ · ${g.prompt.slice(0, 60)}${g.prompt.length > 60 ? "…" : ""}`,
+  }));
   const planOf = new Map((plans ?? []).map((p) => [p.scene_id, p]));
   const hasFrame = !!product.image_url && /^https?:\/\//i.test(product.image_url);
   const clipScenes: ClipScene[] = (scenes ?? []).map((s, i) => {
@@ -216,7 +229,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
           )}
           <section aria-labelledby="clips-h">
             <SectionHeader id="clips-h" title="คลิป AI ต่อฉาก" description="สร้างคลิปด้วย AI เฉพาะฉากที่ต้องการ ตรวจแล้วกด “ใช้คลิปนี้” — ฉากอื่นใช้ภาพสินค้า + motion graphics ได้ฟรี · render ได้เมื่อทุกฉากที่ตั้งเป็นคลิป AI มีคลิปที่อนุมัติแล้ว" />
-            <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} />
+            <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} reusable={reusable} />
           </section>
         </div>
 
