@@ -457,7 +457,8 @@ async function processJob(job: Tables<"render_jobs">) {
       },
       lengthCheck(facts.durationS ?? props.durationInFrames / props.fps, targetSeconds),
       loopCheck(props),
-      { key: "disclosure", label: "เปิดเผยลิงก์ affiliate", ok: props.disclosure.includes("ค่าคอมมิชชัน"), detail: "แสดงในฉากปิดท้ายและซับไตเติล", level: "error" },
+      // Not on the video (the user's choice): the post caption carries it, and publishing blocks a caption without it.
+      { key: "disclosure", label: "เปิดเผยลิงก์ affiliate", ok: props.disclosure.includes("ค่าคอมมิชชัน"), detail: "ใส่ในแคปชันตอนเผยแพร่ (ไม่แสดงบนวิดีโอ) — บน TikTok เปิด “เนื้อหาเชิงพาณิชย์” ด้วย", level: "error" },
       voiceCheck(tts, voice, scenes, facts.audioCodec),
       ...(music ? [{ key: "music", label: "เพลงประกอบ", ok: music.verdict.level === "ok", detail: `${music.asset.name} — ${music.verdict.message}`, level: "warn" as const }] : []),
     ]);

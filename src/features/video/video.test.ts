@@ -51,10 +51,10 @@ describe("buildTimeline", () => {
     const withAudio = buildTimeline({ ...input, scenes: [{ ...input.scenes[0], audioSeconds: 7 }] });
     expect(withAudio.scenes[0].duration).toBe(210);
   });
-  it("writes SRT/VTT including the disclosure", () => {
+  it("writes SRT/VTT of the spoken lines (the disclosure goes in the caption, not the video)", () => {
     const srt = toSrt(t);
+    expect(srt).not.toContain("#ได้รับค่าคอมมิชชัน");
     expect(srt.startsWith("1\n00:00:00,000 --> ")).toBe(true);
-    expect(srt).toContain("#ได้รับค่าคอมมิชชัน");
     expect(toVtt(t).startsWith("WEBVTT\n\n00:00:00.000 --> ")).toBe(true);
   });
 });

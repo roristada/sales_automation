@@ -9,6 +9,8 @@ export const SAFE = { top: 150, bottom: 380, side: 70, right: 140 } as const;
 
 export const ZONES = {
   hook: { top: SAFE.top, height: 190 },
+  /** Over a full-screen clip the product fills the middle: scene text goes in the top band. */
+  mediaText: { top: SAFE.top + 10, height: 170 },
   card: { top: 360, size: 700 },
   text: { top: 1100, height: 250 },
   /** Subtitles are bottom-anchored at SAFE.bottom; one cue line is at most ~100px tall. */

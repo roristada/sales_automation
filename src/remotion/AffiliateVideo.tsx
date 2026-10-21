@@ -237,15 +237,6 @@ function Hook({ text }: { text: string }) {
   );
 }
 
-function Disclosure({ text }: { text: string }) {
-  const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" });
-  // Affiliate disclosure: always shown on the end card (and in the caption/subtitles).
-  return (
-    <div style={{ position: "absolute", bottom: SAFE.bottom, left: SAFE.side, width: TEXT_WIDTH, textAlign: "center", fontFamily, fontWeight: 400, fontSize: 38, lineHeight: 1.4, color: C.text, background: C.pill, padding: "14px 24px", borderRadius: 16, opacity }}>{text}</div>
-  );
-}
-
 /** Full-screen library media with a slow zoom (images) or a muted, looping clip (video). */
 function FullBleed({ media, duration }: { media: SceneMedia; duration: number }) {
   const frame = useCurrentFrame();
@@ -271,21 +262,37 @@ function FullBleed({ media, duration }: { media: SceneMedia; duration: number })
   );
 }
 
+/** Scene text over a full-screen clip: top band, smaller, on a see-through dark pill. */
+function MediaCaption({ text }: { text: string }) {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: "clamp" });
+  const size = fitFontSize(text, { maxWidth: TEXT_WIDTH, maxHeight: ZONES.mediaText.height, sizes: [56, 50, 44, 38], padding: 24 });
+  return (
+    <div style={{ position: "absolute", top: ZONES.mediaText.top, height: ZONES.mediaText.height, left: SAFE.side, width: TEXT_WIDTH, display: "flex", alignItems: "flex-start", justifyContent: "center", overflow: "hidden", opacity }}>
+      <div style={{ fontFamily, fontWeight: 800, fontSize: size, lineHeight: 1.3, color: C.text, background: "rgba(15, 23, 42, 0.62)", padding: "10px 26px", borderRadius: 20, textAlign: "center", textShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>{text}</div>
+    </div>
+  );
+}
+
 function SceneText({ scene }: { scene: TimelineScene }) {
   const text = scene.onScreenText.trim();
   if (!text) return null;
+  if (scene.media) return <MediaCaption text={text} />;
   if (scene.kind === "price") return <PriceTag text={text} />;
   if (scene.kind === "cta") return <CtaButton text={text} />;
   const spec = scene.kind === "feature" ? splitLabel(text) : null;
   return spec ? <SpecCallout label={spec.label} value={spec.value} /> : <OnScreenText text={text} />;
 }
 
-function SceneLayer({ scene, productName }: { scene: TimelineScene; productName: string }) {
+function SceneLayer({ scene, productName, textDelay }: { scene: TimelineScene; productName: string; textDelay: number }) {
   return (
     <>
       {scene.media ? <FullBleed media={scene.media} duration={scene.duration + TRANSITION_FRAMES} /> : <ProductCard imageSrc={scene.image} productName={productName} duration={scene.duration} index={scene.index} />}
-      {scene.badge && <Badge text={scene.badge} />}
-      <SceneText scene={scene} />
+      {scene.badge && !scene.media && <Badge text={scene.badge} />}
+      {/* Over a clip the text shares the top band with the hook: it waits until the hook is gone. */}
+      <Sequence from={scene.media ? textDelay : 0} name="scene text" layout="none">
+        <SceneText scene={scene} />
+      </Sequence>
     </>
   );
 }
@@ -319,7 +326,7 @@ export function AffiliateVideo(props: VideoProps) {
         return (
           <Sequence key={s.id} from={s.from} durationInFrames={s.duration + tail} name={`scene ${s.kind}`}>
             <Enter transition={s.transition}>
-              <SceneLayer scene={s} productName={props.productName} />
+              <SceneLayer scene={s} productName={props.productName} textDelay={s.index === 0 && props.hook ? props.hookDuration : 0} />
             </Enter>
           </Sequence>
         );
@@ -346,7 +353,6 @@ export function AffiliateVideo(props: VideoProps) {
         <Enter transition="fade">
           <ProductCard imageSrc={main} productName={props.productName} duration={props.endCard.duration} index={0} />
         {props.cta && <CtaButton text={props.cta} />}
-        <Disclosure text={props.disclosure} />
         </Enter>
       </Sequence>
       {props.music && <Html5Audio src={props.music.src} volume={props.music.volume} loop name="music" />}

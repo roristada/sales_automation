@@ -9,7 +9,9 @@ import { END_CARD_SECONDS as END_CARD, estimateSceneSeconds } from "@/features/c
 export const VIDEO = { width: 1080, height: 1920, fps: 30 } as const;
 // 2: zoned layout (no text overlap), product photo per scene, spec/price/step callouts, motion.
 // 3: transitions between scenes (the outgoing scene stays under the incoming one), voice, music.
-export const RENDERER_VERSION = 3;
+// 4: scene text over a full-screen clip moves to the top band; no disclosure on the video itself
+//    (the user's choice — it is in the post caption, which publishing requires).
+export const RENDERER_VERSION = 4;
 
 /** How a scene enters from the previous one; "auto" = the template default (crossfade). */
 export const TRANSITIONS = ["auto", "cut", "fade", "slide", "zoom"] as const;
@@ -187,13 +189,13 @@ function stamp(frames: number, fps: number, sep: "," | ".") {
   return `${pad(h)}:${pad(m)}:${pad(s)}${sep}${pad(ms % 1000, 3)}`;
 }
 
-/** Subtitles for upload with the video. The disclosure is included at the end card. */
+/** Subtitles for upload with the video (the spoken lines only; the disclosure is in the caption). */
 export function toSrt(props: VideoProps): string {
-  const cues = [...props.cues, { from: props.endCard.from, duration: props.endCard.duration, text: props.disclosure }];
+  const cues = props.cues;
   return cues.map((c, i) => `${i + 1}\n${stamp(c.from, props.fps, ",")} --> ${stamp(c.from + c.duration, props.fps, ",")}\n${c.text}\n`).join("\n");
 }
 
 export function toVtt(props: VideoProps): string {
-  const cues = [...props.cues, { from: props.endCard.from, duration: props.endCard.duration, text: props.disclosure }];
+  const cues = props.cues;
   return `WEBVTT\n\n${cues.map((c) => `${stamp(c.from, props.fps, ".")} --> ${stamp(c.from + c.duration, props.fps, ".")}\n${c.text}\n`).join("\n")}`;
 }

@@ -86,7 +86,8 @@ test("render a video from an approved script", async ({ page }) => {
   expect(part.status()).toBe(206);
   expect((await part.body()).length).toBe(100);
   const srt = await page.request.get((await page.getByRole("link", { name: "ซับไตเติล (SRT)" }).getAttribute("href"))!);
-  expect(await srt.text()).toContain("#ได้รับค่าคอมมิชชัน");
+  // Spoken lines only: the disclosure is in the post caption, not on the video (renderer v4).
+  expect(await srt.text()).not.toContain("#ได้รับค่าคอมมิชชัน");
 
   // Rerender is available once the job is done.
   await expect(page.getByRole("button", { name: "Render ใหม่" })).toBeVisible();
