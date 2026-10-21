@@ -405,14 +405,19 @@ export interface SpeechResult {
 
 const MAX_SPEECH_BYTES = 20 * 1024 * 1024;
 
+/** Providers that only return raw PCM; converted to MP3 here (Gemini TTS refuses "mp3"). */
+const PCM_ONLY = ["google/"];
+
 /**
- * `POST /audio/speech` — the body is the audio itself (MP3 asked for; the default is raw PCM).
- * Never retried: each call is billed. Errors come back as JSON.
+ * `POST /audio/speech` — the body is the audio itself. MP3 is asked for, except from providers
+ * that only send raw PCM, which is converted to MP3 with ffmpeg. Never retried: each call is
+ * billed. Errors come back as JSON.
  */
 export async function speak(input: SpeechInput): Promise<SpeechResult> {
   const key = openRouterKey();
   if (!key) throw new OpenRouterError("ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local");
-  const body: Record<string, unknown> = { model: input.model, input: input.text, response_format: "mp3" };
+  const pcm = PCM_ONLY.some((p) => input.model.startsWith(p));
+  const body: Record<string, unknown> = { model: input.model, input: input.text, response_format: pcm ? "pcm" : "mp3" };
   if (input.voice) body.voice = input.voice;
   if (input.instructions) body.instructions = input.instructions;
   let res: Response;
@@ -438,11 +443,19 @@ export async function speak(input: SpeechInput): Promise<SpeechResult> {
     const status = res.ok ? 500 : res.status;
     throw new OpenRouterError(errorMessage(status, detail), status, isRetryable(status));
   }
-  if (!type.startsWith("audio/mpeg")) throw new OpenRouterError(`OpenRouter ส่งเสียงกลับมาเป็นชนิดที่ไม่รองรับ (${type || "ไม่ทราบชนิด"})`);
-  const audio = Buffer.from(await res.arrayBuffer());
-  if (!audio.length) throw new OpenRouterError("OpenRouter ส่งไฟล์เสียงว่างกลับมา");
-  if (audio.length > MAX_SPEECH_BYTES) throw new OpenRouterError("ไฟล์เสียงใหญ่เกินกำหนด");
-  return { audio, generationId: res.headers.get("x-generation-id") };
+  if (!type.startsWith("audio/mpeg") && !type.startsWith("audio/pcm")) throw new OpenRouterError(`OpenRouter ส่งเสียงกลับมาเป็นชนิดที่ไม่รองรับ (${type || "ไม่ทราบชนิด"})`);
+  const raw = Buffer.from(await res.arrayBuffer());
+  if (!raw.length) throw new OpenRouterError("OpenRouter ส่งไฟล์เสียงว่างกลับมา");
+  if (raw.length > MAX_SPEECH_BYTES) throw new OpenRouterError("ไฟล์เสียงใหญ่เกินกำหนด");
+  const generationId = res.headers.get("x-generation-id");
+  if (type.startsWith("audio/mpeg")) return { audio: raw, generationId };
+  // Imported here so the Next.js side never loads child_process for the other calls.
+  const { pcmFormat, pcmToMp3 } = await import("./pcm");
+  try {
+    return { audio: await pcmToMp3(raw, pcmFormat(type)), generationId };
+  } catch (e) {
+    throw new OpenRouterError(`แปลงเสียงจาก OpenRouter เป็น MP3 ไม่สำเร็จ (ต้องติดตั้ง FFmpeg หรือตั้ง FFMPEG_PATH): ${(e as Error).message}`);
+  }
 }
 
 /**

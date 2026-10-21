@@ -50,11 +50,11 @@ describe("speech client", () => {
 
   it("asks for MP3 with voice and delivery, returns the bytes and generation id; never retries", async () => {
     const ok = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "audio/mpeg", "X-Generation-Id": "gen-tts-1" } }));
-    const r = await speak({ model: gemini.id, text: "สวัสดี", voice: "Kore", instructions: "warm", fetchImpl: ok });
+    const r = await speak({ model: eleven.id, text: "สวัสดี", voice: "Rachel", instructions: "warm", fetchImpl: ok });
     expect([...r.audio]).toEqual([1, 2, 3]);
     expect(r.generationId).toBe("gen-tts-1");
     expect(String(ok.mock.calls[0][0])).toMatch(/\/audio\/speech$/);
-    expect(JSON.parse(ok.mock.calls[0][1]!.body as string)).toEqual({ model: gemini.id, input: "สวัสดี", voice: "Kore", instructions: "warm", response_format: "mp3" });
+    expect(JSON.parse(ok.mock.calls[0][1]!.body as string)).toEqual({ model: eleven.id, input: "สวัสดี", voice: "Rachel", instructions: "warm", response_format: "mp3" });
 
     const noVoice = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1]), { headers: { "Content-Type": "audio/mpeg" } }));
     await speak({ model: free.id, text: "x", fetchImpl: noVoice });
@@ -63,8 +63,21 @@ describe("speech client", () => {
     const broke = vi.fn<typeof fetch>(async () => Response.json({ error: { code: 402, message: "Insufficient credits" } }, { status: 402 }));
     await expect(speak({ model: gemini.id, text: "x", fetchImpl: broke })).rejects.toThrow(/เครดิต OpenRouter ไม่พอ.* · Insufficient credits/);
     expect(broke).toHaveBeenCalledTimes(1);
-    const wrongType = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1]), { headers: { "Content-Type": "audio/pcm" } }));
-    await expect(speak({ model: gemini.id, text: "x", fetchImpl: wrongType })).rejects.toThrow(/audio\/pcm/);
+    const wrongType = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1]), { headers: { "Content-Type": "audio/wav" } }));
+    await expect(speak({ model: eleven.id, text: "x", fetchImpl: wrongType })).rejects.toThrow(/audio\/wav/);
+  });
+
+  it("asks Gemini for PCM (it refuses mp3) and converts it to MP3 at the rate the header gives", async () => {
+    // 0.5 s of silence, 16-bit mono at 24 kHz.
+    const pcm = Buffer.alloc(24_000);
+    const res = vi.fn<typeof fetch>(async () => new Response(pcm, { headers: { "Content-Type": "audio/pcm;rate=24000;channels=1" } }));
+    const r = await speak({ model: gemini.id, text: "สวัสดี", voice: "Kore", fetchImpl: res });
+    expect(JSON.parse(res.mock.calls[0][1]!.body as string)).toMatchObject({ response_format: "pcm" });
+    // An MP3 stream: ID3 tag or an MPEG frame sync.
+    expect(r.audio.subarray(0, 3).toString() === "ID3" || (r.audio[0] === 0xff && (r.audio[1] & 0xe0) === 0xe0)).toBe(true);
+    const { pcmFormat } = await import("./pcm");
+    expect(pcmFormat("audio/pcm;rate=44100;channels=2")).toEqual({ rate: 44100, channels: 2 });
+    expect(pcmFormat("audio/pcm")).toEqual({ rate: 24000, channels: 1 });
   });
 
   it("lists speech models and looks up a generation's cost (null until recorded)", async () => {

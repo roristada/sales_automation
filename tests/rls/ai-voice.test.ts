@@ -63,11 +63,15 @@ function mp3(seconds: number): Buffer {
   execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `sine=frequency=440:duration=${seconds}`, "-c:a", "libmp3lame", "-b:a", "64k", "-y", file]);
   return readFileSync(file);
 }
+/** The same tone as raw 16-bit 24 kHz mono PCM — what Gemini TTS sends. */
+function pcm(seconds: number): Buffer {
+  return execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `sine=frequency=440:duration=${seconds}`, "-f", "s16le", "-ar", "24000", "-ac", "1", "pipe:1"], { maxBuffer: 10 * 1024 * 1024 });
+}
 
 // Fake OpenRouter speech API: the line "ยาว…" speaks for 3 s, others 1.5 s.
 const speechCalls: Record<string, unknown>[] = [];
 let failNext = false;
-let tones: { short: Buffer; long: Buffer };
+let tones: { short: Buffer; long: Buffer; pcmShort: Buffer; pcmLong: Buffer };
 const server = http.createServer((req, res) => {
   let raw = "";
   req.on("data", (c) => (raw += c));
@@ -84,12 +88,11 @@ const server = http.createServer((req, res) => {
         });
       }
       const n = speechCalls.length;
-      return void res
-        .writeHead(200, {
-          "Content-Type": "audio/mpeg",
-          "X-Generation-Id": `gen-tts-${n}`,
-        })
-        .end(String(body.input).startsWith("ยาว") ? tones.long : tones.short);
+      const long = String(body.input).startsWith("ยาว");
+      if (body.response_format === "pcm") {
+        return void res.writeHead(200, { "Content-Type": "audio/pcm;rate=24000;channels=1", "X-Generation-Id": `gen-tts-${n}` }).end(long ? tones.pcmLong : tones.pcmShort);
+      }
+      return void res.writeHead(200, { "Content-Type": "audio/mpeg", "X-Generation-Id": `gen-tts-${n}` }).end(long ? tones.long : tones.short);
     }
     if (req.url?.startsWith("/generation?id=gen-tts-")) return send(200, { data: { total_cost: 0.0004 } });
     if (req.url === "/models?output_modalities=speech")
@@ -119,7 +122,7 @@ const tts = {
 };
 
 beforeAll(async () => {
-  tones = { short: mp3(1.5), long: mp3(3) };
+  tones = { short: mp3(1.5), long: mp3(3), pcmShort: pcm(1.5), pcmLong: pcm(3) };
   storageDir = mkdtempSync(path.join(os.tmpdir(), "voice-store-"));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -198,7 +201,8 @@ describe("voice-over", () => {
       input: "กันน้ำได้",
       voice: "Kore",
       instructions: "warm",
-      response_format: "mp3",
+      // Gemini TTS only sends raw PCM; it's converted to MP3 before caching.
+      response_format: "pcm",
     });
     const [s0, s1, s2] = await scenes();
     expect(first.byScene.get(s0.id)!.seconds).toBeCloseTo(3, 0);
