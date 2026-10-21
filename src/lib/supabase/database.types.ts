@@ -9,7 +9,15 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      graphql: { Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json }; Returns: Json };
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -92,6 +100,108 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      ai_requests: {
+        Row: {
+          cost_thb: number;
+          cost_usd: number;
+          created_at: string;
+          error: string | null;
+          generation_id: string | null;
+          id: string;
+          input_tokens: number | null;
+          model: string;
+          output_tokens: number | null;
+          owner_id: string;
+          product_id: string | null;
+          status: string;
+          storyboard_id: string | null;
+          task: string;
+          video_seconds: number | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          cost_thb?: number;
+          cost_usd?: number;
+          created_at?: string;
+          error?: string | null;
+          generation_id?: string | null;
+          id?: string;
+          input_tokens?: number | null;
+          model: string;
+          output_tokens?: number | null;
+          owner_id?: string;
+          product_id?: string | null;
+          status: string;
+          storyboard_id?: string | null;
+          task: string;
+          video_seconds?: number | null;
+        };
+        Update: {
+          cost_thb?: number;
+          cost_usd?: number;
+          created_at?: string;
+          error?: string | null;
+          generation_id?: string | null;
+          id?: string;
+          input_tokens?: number | null;
+          model?: string;
+          output_tokens?: number | null;
+          owner_id?: string;
+          product_id?: string | null;
+          status?: string;
+          storyboard_id?: string | null;
+          task?: string;
+          video_seconds?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ai_requests_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ai_requests_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "research_products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ai_requests_storyboard_id_fkey";
+            columns: ["storyboard_id"];
+            isOneToOne: false;
+            referencedRelation: "storyboards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_settings: {
+        Row: {
+          confirm_over_thb: number;
+          models: NonNullable<Json>;
+          owner_id: string;
+          per_video_cap_thb: number | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          confirm_over_thb?: number;
+          models?: NonNullable<Json>;
+          owner_id?: string;
+          per_video_cap_thb?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          confirm_over_thb?: number;
+          models?: NonNullable<Json>;
+          owner_id?: string;
+          per_video_cap_thb?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       assets: {
         Row: {
@@ -1375,7 +1485,10 @@ export type Database = {
           isSetofReturn: true;
         };
       };
-      fail_exhausted_render_jobs: { Args: { stale_after?: string }; Returns: number };
+      fail_exhausted_render_jobs: {
+        Args: { stale_after?: string };
+        Returns: number;
+      };
       project_costs: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1417,12 +1530,14 @@ type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"]) | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] & DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] & DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R;
     }
@@ -1438,12 +1553,14 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I;
     }
@@ -1459,12 +1576,14 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U;
     }
@@ -1480,12 +1599,14 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
@@ -1493,12 +1614,14 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"] | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]

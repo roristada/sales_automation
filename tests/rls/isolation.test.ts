@@ -419,6 +419,30 @@ ${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure, ...e
     await admin.from("worker_heartbeats").delete().eq("worker_id", id);
   });
 
+  it("AI settings and request log: owner-only; log entries can't be edited, deleted or point at others' rows; spend counts them", async () => {
+    expect((await a.client.from("ai_settings").insert({ models: { script: "a/b" }, per_video_cap_thb: 100 })).error).toBeNull();
+    expect((await b.client.from("ai_settings").select("owner_id")).data).toEqual([]);
+    expect((await b.client.from("ai_settings").insert({ owner_id: a.id })).error?.code).toBe("42501");
+    expect((await b.client.from("ai_settings").update({ per_video_cap_thb: 1 }).eq("owner_id", a.id).select()).data).toEqual([]);
+    expect((await a.client.from("ai_settings").update({ models: [] as never }).eq("owner_id", a.id)).error?.code).toBe("23514");
+
+    const before = Number((await a.client.rpc("spend_summary")).data![0].today_thb);
+    const { data: log, error } = await a.client.from("ai_requests").insert({ task: "test", model: "a/b", status: "succeeded", cost_usd: 0.01, cost_thb: 0.35, product_id: productId }).select("id").single();
+    expect(error).toBeNull();
+    expect(Number((await a.client.rpc("spend_summary")).data![0].today_thb)).toBeCloseTo(before + 0.35);
+    expect((await b.client.from("ai_requests").select("id")).data).toEqual([]);
+    expect(Number((await b.client.rpc("spend_summary")).data![0].today_thb)).toBe(0);
+    // Owners can't rewrite or erase their spending record.
+    expect((await a.client.from("ai_requests").update({ cost_thb: 0 }).eq("id", log!.id)).error?.code).toBe("42501");
+    await a.client.from("ai_requests").delete().eq("id", log!.id);
+    expect((await a.client.from("ai_requests").select("cost_thb").eq("id", log!.id).single()).data!.cost_thb).toBe(0.35);
+    // Not as someone else, not against someone else's product, no negative cost, known tasks only.
+    expect((await b.client.from("ai_requests").insert({ owner_id: a.id, task: "test", model: "a/b", status: "failed" })).error?.code).toBe("42501");
+    expect((await b.client.from("ai_requests").insert({ task: "test", model: "a/b", status: "failed", product_id: productId })).error?.code).toBe("42501");
+    expect((await a.client.from("ai_requests").insert({ task: "test", model: "a/b", status: "failed", cost_thb: -1 })).error?.code).toBe("23514");
+    expect((await a.client.from("ai_requests").insert({ task: "other", model: "a/b", status: "failed" })).error?.code).toBe("23514");
+  });
+
   it("links rendered as href must be http(s), even when written straight through the API", async () => {
     for (const url of ["javascript:alert(1)", "data:text/html,x", " javascript:alert(1)"]) {
       expect((await a.client.from("products").update({ product_url: url }).eq("id", productId)).error?.code).toBe("23514");
@@ -430,7 +454,7 @@ ${disclosure}`, storyboard_id: sb!.id, project_id: project!.id, disclosure, ...e
 
   it("anonymous clients see nothing", async () => {
     const anon = createClient<Database>(URL, ANON, { auth: { persistSession: false } });
-    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications", "performance_imports", "post_metrics", "affiliate_conversions"] as const) {
+    for (const table of ["products", "opportunity_scores", "research_products", "product_freshness", "trend_imports", "trend_observations", "product_trend_links", "product_facts", "content_projects", "storyboards", "storyboard_scenes", "scene_claims", "render_jobs", "render_outputs", "assets", "usage_events", "spending_limits", "publications", "performance_imports", "post_metrics", "affiliate_conversions", "ai_settings", "ai_requests"] as const) {
       const { data, error } = await anon.from(table as "products").select("*");
       expect(data ?? []).toEqual([]);
       if (error) expect(error.code).toBe("42501");

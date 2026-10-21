@@ -9,6 +9,10 @@ import { ago, formatBytes, LOW_DISK_BYTES, WORKER_STATE_LABEL, workerState } fro
 import { getIntegrationStatuses, type IntegrationState } from "@/lib/integrations";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { PROVIDER_LABEL, renderRateThbPerSecond } from "@/features/usage/budget";
+import { AI_TASKS, DEFAULT_MODELS, modelFor, TASK_HINT, TASK_KIND, TASK_LABEL, textModelsFor, textPriceLabel, usdThbRate, usdToThb, videoModelsFor } from "@/features/ai/models";
+import { videoPricePerSecond } from "@/features/ai/openrouter";
+import { getAccountStatus, getAiSettings, getCatalog } from "@/features/ai/queries";
+import { AiSettingsForm, type TaskChoice, TestAiButton } from "./ai-form";
 import { LimitsForm } from "./limits-form";
 import { ProfileForm } from "./profile-form";
 
@@ -34,17 +38,18 @@ export default async function SettingsPage() {
   const { supabase, user } = await getCurrentUser();
   const { data: profile } = await supabase!.from("profiles").select("display_name").eq("id", user!.id).maybeSingle();
   const integrations = getIntegrationStatuses();
-  const [{ data: limits }, { data: spent }, { data: events }, workerStatus, queue, disk] = await Promise.all([
+  const since = new Date(Date.now() - 32 * 86_400_000).toISOString();
+  const [{ data: limits }, { data: spent }, { data: events }, { data: aiLog }, workerStatus, queue, disk, aiSettings, account, catalog] = await Promise.all([
     supabase!.from("spending_limits").select("daily_thb, monthly_thb").maybeSingle(),
     supabase!.rpc("spend_summary"),
-    supabase!
-      .from("usage_events")
-      .select("provider, units, unit, est_cost_thb")
-      .gte("created_at", new Date(Date.now() - 32 * 86_400_000).toISOString())
-      .limit(1000),
+    supabase!.from("usage_events").select("provider, units, unit, est_cost_thb").gte("created_at", since).limit(1000),
+    supabase!.from("ai_requests").select("id, task, model, status, cost_thb, error, created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
     getWorkerStatus(supabase!),
     getQueueStatus(supabase!),
     getDiskStatus(),
+    getAiSettings(supabase!),
+    getAccountStatus(),
+    getCatalog(),
   ]);
   const worker = workerState(workerStatus);
   const byProvider = new Map<string, { units: number; unit: string; cost: number; count: number }>();
@@ -55,7 +60,31 @@ export default async function SettingsPage() {
     row.count += 1;
     byProvider.set(e.provider, row);
   }
+  for (const r of aiLog ?? []) {
+    const row = byProvider.get("openrouter") ?? { units: 0, unit: "calls", cost: 0, count: 0 };
+    row.units += 1;
+    row.cost += Number(r.cost_thb);
+    row.count += 1;
+    byProvider.set("openrouter", row);
+  }
+  const tasks: TaskChoice[] = AI_TASKS.map((task) => {
+    const current = modelFor(task, aiSettings.models);
+    const hint = `${TASK_HINT[task]} · ค่าเริ่มต้น ${DEFAULT_MODELS[task]}`;
+    if ("error" in catalog) return { task, label: TASK_LABEL[task], hint, current, missing: false, options: [{ id: current, label: current }] };
+    const options =
+      TASK_KIND[task] === "text"
+        ? textModelsFor(task, catalog.text)
+            .filter((m) => !m.id.endsWith(":batch"))
+            .sort((a, b) => a.prompt + a.completion - (b.prompt + b.completion))
+            .map((m) => ({ id: m.id, label: `${m.name} · ${textPriceLabel(m)}` }))
+        : videoModelsFor(task, catalog.video).map((m) => {
+            const perSecond = videoPricePerSecond(m.pricing);
+            return { id: m.id, label: `${m.name} · ${perSecond === null ? "ราคาตาม token" : `$${perSecond}/วินาที`}` };
+          });
+    return { task, label: TASK_LABEL[task], hint, current, missing: !options.some((o) => o.id === current), options };
+  });
   const baht = (n: number) => `฿${n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const baht4 = (n: number) => `฿${n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 
   return (
     <>
@@ -80,6 +109,51 @@ export default async function SettingsPage() {
             </li>
           ))}
         </ul>
+      </Group>
+
+      <Group id="ai-h" title="AI (OpenRouter)" description="key เดียวสำหรับโมเดลข้อความ วิดีโอ และเสียง — ตั้งใน .env.local ระบบไม่แสดงค่า key">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-1 rounded-lg border bg-surface px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 text-[13px]">
+              <p className="font-medium">สถานะ OpenRouter</p>
+              <p className="text-xs text-muted-foreground">
+                {account.state === "not_configured"
+                  ? "ยังไม่ได้ตั้งค่า — ใส่ OPENROUTER_API_KEY ใน .env.local แล้วเปิด npm run dev ใหม่ · ปุ่มคัดลอกคำสั่งไปแชท AI ยังใช้ได้ตามเดิม"
+                  : account.state === "error"
+                    ? account.message
+                    : account.key.limitUsd === null
+                      ? "key นี้ไม่มีเพดานบน OpenRouter — แนะนำให้ตั้งที่ openrouter.ai/settings/keys"
+                      : `เพดานของ key $${account.key.limitUsd}${account.key.limitReset === "monthly" ? " ต่อเดือน" : ""} · เหลือ $${(account.key.remainingUsd ?? 0).toFixed(2)} ≈ ${baht(usdToThb(account.key.remainingUsd ?? 0))}`}
+              </p>
+            </div>
+            <Chip tone={account.state === "connected" ? "success" : account.state === "error" ? "danger" : "neutral"} className="self-start">
+              {account.state === "connected" ? "เชื่อมต่อแล้ว" : account.state === "error" ? "เชื่อมต่อไม่ได้" : "ยังไม่ได้ตั้งค่า"}
+            </Chip>
+          </div>
+          <TestAiButton disabled={account.state !== "connected"} />
+          <AiSettingsForm tasks={tasks} perVideoCap={aiSettings.per_video_cap_thb} confirmOver={aiSettings.confirm_over_thb} catalogError={"error" in catalog ? catalog.error : undefined} />
+          <div>
+            <p className="mb-2 text-[13px] font-medium">การเรียก AI ล่าสุด</p>
+            {aiLog?.length ? (
+              <ul className="max-w-2xl divide-y rounded-lg border bg-surface text-[13px]">
+                {aiLog.slice(0, 10).map((r) => (
+                  <li key={r.id} className="flex items-start justify-between gap-3 px-4 py-2">
+                    <span className="min-w-0">
+                      {TASK_LABEL[r.task as keyof typeof TASK_LABEL] ?? r.task} · <span className="break-all">{r.model}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {ago(r.created_at) ?? "เมื่อสักครู่"}
+                        {r.status === "failed" && ` · ${r.error ?? "ล้มเหลว"}`}
+                      </span>
+                    </span>
+                    {r.status === "failed" ? <Chip tone="danger">ล้มเหลว</Chip> : <span className="shrink-0 tabular-nums">{baht4(Number(r.cost_thb))}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">ยังไม่มีการเรียก AI</p>
+            )}
+          </div>
+        </div>
       </Group>
 
       <Group id="system-h" title="สถานะระบบ" description="ตัว render (worker) คิวงาน และพื้นที่เก็บไฟล์ — ตรวจจากระบบจริงทุกครั้งที่เปิดหน้านี้">
@@ -155,7 +229,7 @@ export default async function SettingsPage() {
                   <span>
                     {PROVIDER_LABEL[provider] ?? provider}
                     <span className="block text-xs text-muted-foreground">
-                      {r.count} ครั้ง · {r.unit === "video_seconds" ? `${(r.units / 60).toFixed(1)} นาทีวิดีโอ` : `${r.units} ${r.unit}`} (30 วันล่าสุด)
+                      {r.count} ครั้ง · {r.unit === "video_seconds" ? `${(r.units / 60).toFixed(1)} นาทีวิดีโอ` : r.unit === "calls" ? "เรียก AI" : `${r.units} ${r.unit}`} (30 วันล่าสุด)
                     </span>
                   </span>
                   <span className="tabular-nums">{baht(r.cost)}</span>
@@ -166,7 +240,7 @@ export default async function SettingsPage() {
             <p className="text-[13px] text-muted-foreground">ยังไม่มีการใช้งานใน 30 วันล่าสุด</p>
           )}
           <p className="max-w-xl text-xs text-muted-foreground">
-            Render บนเครื่องนี้ (Remotion Free License) คิด {baht(renderRateThbPerSecond() * 60)} ต่อนาทีวิดีโอ · ยังไม่มีบริการภายนอกที่มีค่าใช้จ่ายเชื่อมต่ออยู่ (TTS, AI ผ่าน API) —
+            Render บนเครื่องนี้ (Remotion Free License) คิด {baht(renderRateThbPerSecond() * 60)} ต่อนาทีวิดีโอ · AI ผ่าน OpenRouter ใช้ค่าใช้จ่ายจริงที่ OpenRouter รายงาน (USD) คิด {usdThbRate()} บาท/USD (ตั้งด้วย USD_THB_RATE) —
             งานที่ไม่มีค่าใช้จ่ายจะไม่ถูกหยุดแม้ถึงเพดาน
           </p>
           <LimitsForm daily={limits?.daily_thb ?? null} monthly={limits?.monthly_thb ?? null} />

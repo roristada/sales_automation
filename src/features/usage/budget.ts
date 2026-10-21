@@ -9,6 +9,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   render: "Render วิดีโอ (บนเครื่องนี้)",
   tts: "เสียงพากย์ (TTS)",
   llm: "AI ช่วยเขียน (API)",
+  openrouter: "AI ผ่าน OpenRouter",
 };
 
 export function renderRateThbPerSecond(): number {

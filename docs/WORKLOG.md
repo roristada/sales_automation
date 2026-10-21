@@ -100,3 +100,7 @@ npm run backup                   # สำรองข้อมูล (ควร�
 ### 2026-10-21
 
 - M8: security review (headers, CSV formula escaping, DB URL scheme checks, `DISABLE_SIGNUP`, postcss override) → docs/SECURITY.md; worker heartbeat + Settings “สถานะระบบ” + `/api/health`; `npm run backup` (ทดสอบกู้คืนทุกครั้ง) / `npm run restore` (ทดสอบกู้คืนจริงลง DB ชั่วคราวแล้ว); docs/DEPLOY.md
+
+### 2026-10-22
+
+- AI-1: client OpenRouter, ตั้งค่าโมเดลต่องานจาก catalog จริง, `ai_settings`/`ai_requests`, ค่าใช้จ่าย AI รวมเข้าเพดานเดิม, ปุ่มทดสอบเรียกจริง — ตรวจ catalog วันนี้: รุ่นตามแผนมีครบ (DeepSeek V4.1 Flash, GLM 5.3 Flash, Kling v3.0 std, Veo 3.1 Fast/Lite)

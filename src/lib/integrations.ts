@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { LLM_STATUS } from "@/features/content/llm";
 import { TTS_STATUS } from "@/features/video/tts";
 import { getSourceAdapter } from "@/features/sources/registry";
@@ -57,12 +58,20 @@ export function getIntegrationStatuses(): IntegrationStatus[] {
       state: FROM_SOURCE[TREND_ADAPTERS.google_trends_api.connection().state],
       note: TREND_ADAPTERS.google_trends_api.connection().note,
     },
-    {
-      key: "llm",
-      name: "AI provider (LLM)",
-      purpose: "ช่วยร่างสคริปต์ (ไม่บังคับ)",
-      state: FROM_SOURCE[LLM_STATUS.state],
-      note: LLM_STATUS.note,
-    },
+    isOpenRouterConfigured()
+      ? {
+          key: "llm",
+          name: "AI provider (OpenRouter)",
+          purpose: "กรอกข้อมูล เขียนสคริปต์ และสร้างคลิป (ไม่บังคับ)",
+          state: "configured_untested",
+          note: "ตั้ง OPENROUTER_API_KEY แล้ว — สถานะจริง เพดาน และการทดสอบอยู่ในส่วน “AI (OpenRouter)”",
+        }
+      : {
+          key: "llm",
+          name: "AI provider (LLM)",
+          purpose: "ช่วยร่างสคริปต์ (ไม่บังคับ)",
+          state: FROM_SOURCE[LLM_STATUS.state],
+          note: LLM_STATUS.note,
+        },
   ];
 }
