@@ -15,6 +15,7 @@ import path from "node:path";
 import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
+import { missingClipsMessage, resolveAiClips } from "@/features/ai/clips";
 import { licenseVerdict } from "@/features/assets/licensing";
 import { galleryList } from "@/features/products/schema";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
@@ -201,12 +202,27 @@ async function loadPlan(job: Tables<"render_jobs">) {
     .eq("storyboard_id", sb.id)
     .order("position");
   if (!scenes?.length) throw new RenderError("no_scenes", "สคริปต์ไม่มีฉาก");
+  // AI-4: scenes planned as AI clips show their approved clip instead of the scene's own media.
+  const [{ data: plans }, { data: approved }] = await Promise.all([
+    db.from("scene_visual_plans").select("scene_id, mode").eq("storyboard_id", sb.id),
+    db
+      .from("scene_generations")
+      .select("scene_id, asset_id, asset:assets(id, name, kind, mime, storage_key, license, attribution, source, ai_generated, duration_s)")
+      .eq("storyboard_id", sb.id)
+      .eq("review_status", "approved"),
+  ]);
+  const clips = resolveAiClips(scenes, plans ?? [], approved ?? []);
+  if (clips.missing.length) throw new RenderError("ai_clip_missing", missingClipsMessage(clips.missing));
+  const clipAsset = new Map((approved ?? []).map((g) => [g.scene_id, g.asset]));
+  for (const s of scenes) {
+    if (clips.assetByScene.has(s.id)) s.asset = clipAsset.get(s.id) ?? s.asset;
+  }
   for (const s of scenes) {
     if (s.asset && licenseVerdict(s.asset).level === "block") {
       throw new RenderError("asset_license", `ฉากที่ ${s.position + 1}: ไฟล์ “${s.asset.name}” ${licenseVerdict(s.asset).message}`);
     }
   }
-  return { sb, product: product!, scenes };
+  return { sb, product: product!, scenes, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
 }
 
 async function ffprobe(file: string): Promise<unknown> {
@@ -238,7 +254,7 @@ async function processJob(job: Tables<"render_jobs">) {
   try {
     log(job.id, `เริ่มงาน (ครั้งที่ ${job.attempt}/${job.max_attempts})`);
     await update(job.id, { stage: "loading", progress: 0.02 });
-    const { sb, product, scenes } = await loadPlan(job);
+    const { sb, product, scenes, aiClipScenes, aiClipsExpected } = await loadPlan(job);
     const image = await loadImage(product.image_url);
     // Extra photos are optional: ones that fail to load are skipped and noted in QA.
     const extra = await Promise.all(galleryList(product.gallery_urls).slice(0, MAX_GALLERY_IMAGES).map((u) => loadImage(u)));
@@ -315,6 +331,13 @@ async function processJob(job: Tables<"render_jobs">) {
     const facts = probeFacts(probe);
     const report = qaReport(facts, { width: VIDEO.width, height: VIDEO.height, fps: VIDEO.fps, durationS: props.durationInFrames / props.fps }, [
       image.check,
+      {
+        key: "ai_clips",
+        label: "คลิป AI",
+        ok: aiClipScenes === aiClipsExpected,
+        detail: aiClipsExpected ? `${aiClipScenes} ฉากใช้คลิป AI ที่อนุมัติแล้ว (ตั้งไว้ ${aiClipsExpected} ฉาก)` : "ไม่มีฉากที่ใช้คลิป AI",
+        level: "error",
+      },
       {
         key: "gallery",
         label: "รูปเพิ่มเติม",

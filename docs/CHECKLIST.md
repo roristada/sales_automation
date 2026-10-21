@@ -183,3 +183,12 @@ Not done in AI-2: AI suggesting category / short description (facts only); Qwen 
 - [x] Tests — unit 143 ✅, RLS 24 ✅ (`tests/rls/ai-clips.test.ts`: permissions + the worker pipeline end to end against a **fake** OpenRouter server — submit body, single submit, polling, MP4 stored as asset, cost logged, failed submit not retried, cancel), e2e 15 specs ✅ (`ai3.spec.ts`: plan an AI clip, saved, model + estimate shown; nothing paid clicked)
 
 Not done in AI-3: a real clip through OpenRouter (acceptance) and the 3-model comparison (Veo 3.1 Lite / Kling v3.0 std / Veo 3.1 Fast) — both wait for credit; render using approved clips is AI-4.
+
+## AI-4 — Render with approved AI clips ✅ (with test clips; real AI clips wait for AI-3 credit) (2026-10-22)
+- [x] `resolveAiClips`: a scene planned as "คลิป AI" uses its approved clip; any AI scene without one blocks rendering — checked when queuing (`queueRender`, clear message naming the scenes) and again in the worker (`ai_clip_missing`)
+- [x] Worker swaps the approved clip in as the scene's media (muted, looped/trimmed to the narration by the existing FullBleed, text/badge/subtitles/CTA/disclosure on top as before); QA check "คลิป AI" (error level): every AI scene used its approved clip
+- [x] Video Studio live preview uses the same rule
+- [x] Render settings record `ai_clip_scenes`; preparing a publication from such a render adds "มีภาพบางส่วนในคลิปนี้สร้างด้วย AI" to the caption (disclosure stays)
+- [x] Tests — unit 145 ✅, RLS 24 ✅, e2e 15 specs ✅ (`ai3.spec.ts`: render blocked without an approved clip → approve a seeded test clip → real worker render passes QA with the clip → caption has the AI note; frames checked by eye: scene 1 shows the clip, others the product card)
+
+Not done in AI-4: scene transitions beyond the template's own (cut/fade/slide per scene); an on-video "AI" badge (only the caption note for now).

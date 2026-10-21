@@ -104,10 +104,16 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     hook: sb.hook,
     cta: sb.cta,
     disclosure: sb.disclosure,
-    scenes: (scenes ?? []).map((s) => ({
-      ...s,
-      media: s.asset ? { kind: s.asset.kind as "image" | "video", src: `/api/assets/${s.asset.id}`, durationS: s.asset.duration_s } : null,
-    })),
+    scenes: (scenes ?? []).map((s) => {
+      // Same rule as the render: a scene planned as an AI clip shows its approved clip.
+      const clip = planOf.get(s.id)?.mode === "ai_video" ? generations?.find((g) => g.scene_id === s.id && g.review_status === "approved" && g.asset_id) : undefined;
+      const media = clip
+        ? { kind: "video" as const, src: `/api/assets/${clip.asset_id}`, durationS: clip.duration_s }
+        : s.asset
+          ? { kind: s.asset.kind as "image" | "video", src: `/api/assets/${s.asset.id}`, durationS: s.asset.duration_s }
+          : null;
+      return { ...s, media };
+    }),
   });
   const activeRow = jobs?.find((j) => j.status === "queued" || j.status === "processing");
   // Only asked while a job waits: tells "worker not running" apart from "queued behind another job".
@@ -191,7 +197,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
             </section>
           )}
           <section aria-labelledby="clips-h">
-            <SectionHeader id="clips-h" title="คลิป AI ต่อฉาก" description="สร้างคลิปด้วย AI เฉพาะฉากที่ต้องการ ตรวจแล้วกด “ใช้คลิปนี้” — ฉากอื่นใช้ภาพสินค้า + motion graphics ได้ฟรี · ตอนนี้ render ยังไม่นำคลิป AI ไปใส่ในวิดีโอ (ขั้นถัดไป AI-4)" />
+            <SectionHeader id="clips-h" title="คลิป AI ต่อฉาก" description="สร้างคลิปด้วย AI เฉพาะฉากที่ต้องการ ตรวจแล้วกด “ใช้คลิปนี้” — ฉากอื่นใช้ภาพสินค้า + motion graphics ได้ฟรี · render ได้เมื่อทุกฉากที่ตั้งเป็นคลิป AI มีคลิปที่อนุมัติแล้ว" />
             <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} />
           </section>
         </div>

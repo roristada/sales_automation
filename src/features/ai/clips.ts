@@ -124,3 +124,32 @@ export function clipSpec(model: Pick<VideoModel, "durations" | "resolutions" | "
   const usd = model ? estimateVideoUsd(model.pricing, duration, withImage) : null;
   return { duration, resolution, estUsd: usd ?? 0.15 * duration, priced: usd !== null };
 }
+
+/** Shown in the caption of a video that contains AI clips (platform policies on AI content). */
+export const AI_CAPTION_NOTE = "มีภาพบางส่วนในคลิปนี้สร้างด้วย AI";
+
+/**
+ * Which scenes use an AI clip in the render (AI-4): every scene planned as "ai_video" needs an
+ * approved clip; the rest keep their own media or the product photo. `missing` are 1-based scene
+ * numbers that block rendering.
+ */
+export function resolveAiClips(
+  scenes: { id: string }[],
+  plans: { scene_id: string; mode: string }[],
+  approved: { scene_id: string; asset_id: string | null }[],
+): { assetByScene: Map<string, string>; missing: number[] } {
+  const aiScenes = new Set(plans.filter((p) => p.mode === "ai_video").map((p) => p.scene_id));
+  const clip = new Map(approved.filter((g) => g.asset_id).map((g) => [g.scene_id, g.asset_id!]));
+  const assetByScene = new Map<string, string>();
+  const missing: number[] = [];
+  scenes.forEach((s, i) => {
+    if (!aiScenes.has(s.id)) return;
+    const asset = clip.get(s.id);
+    if (asset) assetByScene.set(s.id, asset);
+    else missing.push(i + 1);
+  });
+  return { assetByScene, missing };
+}
+
+export const missingClipsMessage = (missing: number[]) =>
+  `ฉากที่ ${missing.join(", ")} ตั้งเป็นคลิป AI แต่ยังไม่มีคลิปที่อนุมัติ — กด “ใช้คลิปนี้” หรือเปลี่ยนฉากนั้นเป็นภาพสินค้า + motion graphics`;

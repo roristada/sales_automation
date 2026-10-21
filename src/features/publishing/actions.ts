@@ -42,7 +42,7 @@ export async function createPublication(outputId: string, target: Platform): Pro
 
   const { data: out } = await supabase
     .from("render_outputs")
-    .select("id, job:render_jobs(storyboard:storyboards(id, project_id, caption, disclosure, project:content_projects(product:products(affiliate_url))))")
+    .select("id, job:render_jobs(settings, storyboard:storyboards(id, project_id, caption, disclosure, project:content_projects(product:products(affiliate_url))))")
     .eq("id", outputId)
     .maybeSingle();
   const sb = out?.job?.storyboard;
@@ -57,7 +57,8 @@ export async function createPublication(outputId: string, target: Platform): Pro
     .insert({
       render_output_id: outputId,
       platform: target,
-      caption: composeCaption({ caption: sb.caption, disclosure: sb.disclosure, affiliateUrl, platform: target }),
+      // Videos with AI clips say so in the caption (platform policies on AI-generated content).
+      caption: composeCaption({ caption: sb.caption, disclosure: sb.disclosure, affiliateUrl, platform: target, aiGenerated: Number((out.job?.settings as { ai_clip_scenes?: number } | null)?.ai_clip_scenes ?? 0) > 0 }),
       affiliate_url: affiliateUrl && /^https?:\/\//.test(affiliateUrl) ? affiliateUrl : null,
       // Derived again by the DB trigger from the output; passed only to satisfy the types.
       storyboard_id: sb.id,

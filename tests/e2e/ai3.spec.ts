@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../src/lib/supabase/database.types";
@@ -6,7 +9,9 @@ import type { Database } from "../../src/lib/supabase/database.types";
 /*
  * AI-3 (docs/AI_VIDEO_PLAN.md): Video Studio shows "คลิป AI ต่อฉาก" — each scene's visual plan can be
  * switched to an AI clip with a prompt and saved, with the model and estimated cost from the live
- * catalog. Nothing paid is clicked; the worker pipeline is covered by tests/rls/ai-clips.test.ts.
+ * catalog; render is blocked until the AI scene has an approved clip, then uses it (QA check) and
+ * the caption notes AI imagery (AI-4). Nothing paid is clicked; the worker's OpenRouter pipeline is
+ * covered by tests/rls/ai-clips.test.ts.
  */
 
 function env(name: string): string {
@@ -17,8 +22,9 @@ function env(name: string): string {
 const run = Date.now();
 const today = new Date().toISOString().slice(0, 10);
 
-test("plan an AI clip for a scene in Video Studio", async ({ page }) => {
+test("plan an AI clip, render only with an approved clip, caption notes AI imagery", async ({ page }) => {
   test.skip(!env("OPENROUTER_API_KEY"), "OPENROUTER_API_KEY not set");
+  test.setTimeout(180_000);
   await page.goto("/login");
   await page.getByRole("button", { name: "สร้างบัญชี" }).click();
   await page.getByLabel("อีเมล").fill(`e2e-ai3-${run}@example.test`);
@@ -59,4 +65,80 @@ test("plan an AI clip for a scene in Video Studio", async ({ page }) => {
   await expect(again.getByLabel("Prompt (ภาษาอังกฤษ)")).toHaveValue(/Slow rotation/);
   await expect(again.getByText(/kwaivgi\/kling-v3\.0-std · 5 วิ · ประมาณ ฿\d/)).toBeVisible();
   await expect(again.getByRole("button", { name: "สร้างคลิป AI" })).toBeVisible();
+
+  // AI-4: rendering waits for an approved clip in every AI scene.
+  await page.getByRole("button", { name: "Render วิดีโอ" }).click();
+  await expect(page.getByText(/ฉากที่ 1 ตั้งเป็นคลิป AI แต่ยังไม่มีคลิปที่อนุมัติ/)).toBeVisible();
+
+  // A finished, approved clip — seeded here as a test MP4 (tests/rls/ai-clips.test.ts covers how the
+  // worker gets one from OpenRouter).
+  const { data: sb } = await admin.from("storyboards").select("owner_id").eq("id", storyboardId).single();
+  const sceneId = (await admin.from("storyboard_scenes").select("id").eq("storyboard_id", storyboardId).eq("position", 0).single()).data!.id;
+  const assetId = randomUUID();
+  const key = `${sb!.owner_id}/${assetId}/original.mp4`;
+  const file = path.join(path.resolve(env("RENDER_STORAGE_DIR") || "storage/renders"), ...key.split("/"));
+  mkdirSync(path.dirname(file), { recursive: true });
+  execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc=s=720x1280:d=3:r=30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", file]);
+  const bytes = readFileSync(file);
+  expect(
+    (
+      await admin.from("assets").insert({
+        id: assetId,
+        owner_id: sb!.owner_id,
+        kind: "video",
+        storage_key: key,
+        name: "คลิป AI ทดสอบ",
+        mime: "video/mp4",
+        size_bytes: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        width: 720,
+        height: 1280,
+        duration_s: 3,
+        source: "ai_generated",
+        license: "unknown",
+        ai_generated: true,
+      })
+    ).error,
+  ).toBeNull();
+  expect(
+    (
+      await admin.from("scene_generations").insert({
+        owner_id: sb!.owner_id,
+        scene_id: sceneId,
+        storyboard_id: storyboardId,
+        video_task: "video_product",
+        model: "kwaivgi/kling-v3.0-std",
+        prompt: "test",
+        duration_s: 3,
+        est_cost_thb: 0,
+        status: "succeeded",
+        asset_id: assetId,
+      })
+    ).error,
+  ).toBeNull();
+  await page.reload();
+  const panel = page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 1" }) });
+  await expect(panel.getByText("คลิป AI — สินค้าอาจไม่ตรงของจริง 100%")).toBeVisible();
+  await panel.getByRole("button", { name: "ใช้คลิปนี้" }).click();
+  await expect(panel.getByText("ใช้คลิป AI ที่อนุมัติแล้ว")).toBeVisible();
+
+  await page.getByRole("button", { name: "Render วิดีโอ" }).click();
+  await runWorker();
+  await expect(page.locator('video[src*="/api/renders/"]')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText("1 ฉากใช้คลิป AI ที่อนุมัติแล้ว (ตั้งไว้ 1 ฉาก)")).toBeVisible();
+
+  // The caption says the video contains AI imagery.
+  await page.getByRole("button", { name: "เตรียมเผยแพร่" }).click();
+  await expect(page).toHaveURL(/\/publishing\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("textbox", { name: "แคปชัน" })).toHaveValue(/มีภาพบางส่วนในคลิปนี้สร้างด้วย AI/);
 });
+
+function runWorker(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", "worker/render-worker.ts", "--drain"], { env: process.env, shell: process.platform === "win32" });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`worker exited ${code}\n${out}`))));
+  });
+}

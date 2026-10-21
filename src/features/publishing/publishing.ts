@@ -1,4 +1,5 @@
 import type { WorkflowStatus } from "@/components/shared/status-badge";
+import { AI_CAPTION_NOTE } from "@/features/ai/clips";
 import type { Platform } from "@/features/content/templates";
 import type { SourceConnection } from "@/features/sources/types";
 
@@ -67,8 +68,8 @@ export const PUBLICATION_BADGE: Record<PublicationStatus, WorkflowStatus> = { dr
  * First caption for a publication: the script's caption, then the disclosure; on platforms
  * where caption links work, the affiliate link too.
  */
-export function composeCaption(input: { caption: string; disclosure: string; affiliateUrl: string | null; platform: Platform }): string {
-  const parts = [input.caption.trim(), input.disclosure];
+export function composeCaption(input: { caption: string; disclosure: string; affiliateUrl: string | null; platform: Platform; aiGenerated?: boolean }): string {
+  const parts = [input.caption.trim(), input.disclosure, input.aiGenerated ? AI_CAPTION_NOTE : ""];
   if (input.platform === "shorts" && input.affiliateUrl) parts.push(input.affiliateUrl);
   return parts.filter(Boolean).join("\n\n");
 }

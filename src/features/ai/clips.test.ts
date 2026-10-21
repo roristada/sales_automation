@@ -71,3 +71,30 @@ describe("video client", () => {
     await expect(getVideoJob("../key")).rejects.toThrow();
   });
 });
+
+describe("AI clips in the render (AI-4)", () => {
+  it("uses the approved clip for AI scenes and reports AI scenes without one", async () => {
+    const { resolveAiClips, missingClipsMessage } = await import("./clips");
+    const scenes = [{ id: "s1" }, { id: "s2" }, { id: "s3" }];
+    const plans = [
+      { scene_id: "s1", mode: "ai_video" },
+      { scene_id: "s2", mode: "product_motion" },
+      { scene_id: "s3", mode: "ai_video" },
+    ];
+    const r = resolveAiClips(scenes, plans, [
+      { scene_id: "s1", asset_id: "a1" },
+      { scene_id: "s2", asset_id: "a2" },
+    ]);
+    expect([...r.assetByScene]).toEqual([["s1", "a1"]]);
+    expect(r.missing).toEqual([3]);
+    expect(missingClipsMessage(r.missing)).toMatch(/^ฉากที่ 3 ตั้งเป็นคลิป AI/);
+    expect(resolveAiClips(scenes, [], []).missing).toEqual([]);
+  });
+
+  it("adds the AI note to the caption only for videos with AI clips", async () => {
+    const { composeCaption } = await import("@/features/publishing/publishing");
+    const base = { caption: "หูฟัง", disclosure: "#ได้รับค่าคอมมิชชัน", affiliateUrl: null, platform: "tiktok" as const };
+    expect(composeCaption({ ...base, aiGenerated: true })).toBe("หูฟัง\n\n#ได้รับค่าคอมมิชชัน\n\nมีภาพบางส่วนในคลิปนี้สร้างด้วย AI");
+    expect(composeCaption(base)).toBe("หูฟัง\n\n#ได้รับค่าคอมมิชชัน");
+  });
+});

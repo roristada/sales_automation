@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ActionResult } from "@/features/products/actions";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
+import { missingClipsMessage, resolveAiClips } from "@/features/ai/clips";
 import { buildTimeline, RENDERER_VERSION, VIDEO } from "./timeline";
 
 const uuid = z.uuid();
@@ -23,7 +24,14 @@ export async function queueRender(storyboardId: string): Promise<ActionResult<{ 
   if (sb.status !== "approved") return { ok: false, error: "ต้องอนุมัติสคริปต์ใน Script Studio ก่อน render" };
 
   // Spending cap (free local renders are never blocked).
-  const { data: scenes } = await supabase.from("storyboard_scenes").select("id, kind, narration, on_screen_text").eq("storyboard_id", storyboardId);
+  const [{ data: scenes }, { data: plans }, { data: approvedClips }] = await Promise.all([
+    supabase.from("storyboard_scenes").select("id, kind, narration, on_screen_text").eq("storyboard_id", storyboardId).order("position"),
+    supabase.from("scene_visual_plans").select("scene_id, mode").eq("storyboard_id", storyboardId),
+    supabase.from("scene_generations").select("scene_id, asset_id").eq("storyboard_id", storyboardId).eq("review_status", "approved"),
+  ]);
+  // Every scene planned as an AI clip needs an approved clip (AI-4).
+  const clips = resolveAiClips(scenes ?? [], plans ?? [], approvedClips ?? []);
+  if (clips.missing.length) return { ok: false, error: missingClipsMessage(clips.missing) };
   const plan = buildTimeline({ productName: "", imageSrc: null, hook: "", cta: "", disclosure: "", scenes: scenes ?? [] });
   const estimate = estimateRenderCost(plan.durationInFrames / plan.fps);
   const [{ data: limits }, { data: spent }] = await Promise.all([
@@ -35,7 +43,7 @@ export async function queueRender(storyboardId: string): Promise<ActionResult<{ 
 
   const { data, error } = await supabase
     .from("render_jobs")
-    .insert({ owner_id: user.id, storyboard_id: storyboardId, settings: { ...VIDEO, tts: "none", renderer_version: RENDERER_VERSION } })
+    .insert({ owner_id: user.id, storyboard_id: storyboardId, settings: { ...VIDEO, tts: "none", renderer_version: RENDERER_VERSION, ai_clip_scenes: clips.assetByScene.size } })
     .select("id")
     .single();
   if (error?.code === "23505") {
