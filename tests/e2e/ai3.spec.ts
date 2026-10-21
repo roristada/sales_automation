@@ -66,6 +66,18 @@ test("plan an AI clip, render only with an approved clip, caption notes AI image
   await expect(again.getByText(/kwaivgi\/kling-v3\.0-std · 5 วิ · ประมาณ ฿\d/)).toBeVisible();
   await expect(again.getByRole("button", { name: "สร้างคลิป AI" })).toBeVisible();
 
+  // The model can be picked right here (default: Settings); the estimate follows the pick.
+  const model = again.getByLabel("โมเดลวิดีโอ");
+  await expect(model).toHaveValue("");
+  await expect(model.locator("option").first()).toHaveText("ตามหน้าตั้งค่า (kwaivgi/kling-v3.0-std)");
+  await model.selectOption("google/veo-3.1-lite");
+  await again.getByRole("button", { name: "บันทึกแผนภาพ" }).click();
+  await expect(page.getByText("บันทึกแผนภาพแล้ว").first()).toBeVisible();
+  await page.reload();
+  const picked = page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 1" }) });
+  await expect(picked.getByLabel("โมเดลวิดีโอ")).toHaveValue("google/veo-3.1-lite");
+  await expect(picked.getByText(/google\/veo-3\.1-lite · 4 วิ · ประมาณ ฿\d/)).toBeVisible();
+
   // AI-4: rendering waits for an approved clip in every AI scene.
   await page.getByRole("button", { name: "Render วิดีโอ" }).click();
   await expect(page.getByText(/ฉากที่ 1 ตั้งเป็นคลิป AI แต่ยังไม่มีคลิปที่อนุมัติ/)).toBeVisible();

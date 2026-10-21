@@ -1329,6 +1329,7 @@ export type Database = {
         Row: {
           duration_s: number;
           mode: string;
+          model: string | null;
           owner_id: string;
           prompt: string;
           scene_id: string;
@@ -1341,6 +1342,7 @@ export type Database = {
         Insert: {
           duration_s?: number;
           mode?: string;
+          model?: string | null;
           owner_id?: string;
           prompt?: string;
           scene_id: string;
@@ -1352,6 +1354,7 @@ export type Database = {
         Update: {
           duration_s?: number;
           mode?: string;
+          model?: string | null;
           owner_id?: string;
           prompt?: string;
           scene_id?: string;

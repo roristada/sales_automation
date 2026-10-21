@@ -20,14 +20,14 @@ import { getWorkerStatus } from "@/features/monitoring/queries";
 import { galleryList } from "@/features/products/schema";
 import { workerState } from "@/features/monitoring/status";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { clipSpec, DEFAULT_CLIP_SECONDS, type VideoTask, type VisualMode } from "@/features/ai/clips";
-import { modelFor, usdToThb } from "@/features/ai/models";
+import { DEFAULT_CLIP_SECONDS, VIDEO_TASKS, type VideoTask, type VisualMode } from "@/features/ai/clips";
+import { modelFor, usdThbRate, usdToThb, videoModelsFor } from "@/features/ai/models";
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { getAiSettings, getCatalog } from "@/features/ai/queries";
 import { SCENE_KIND_LABEL } from "@/features/content/templates";
 import { estimateVoiceoverUsd, voiceFor } from "@/features/ai/voiceover";
 import { licenseVerdict } from "@/features/assets/licensing";
-import { type ClipScene, ClipsPanel, type ReusableClip } from "@/features/video/clips-panel";
+import { type ClipScene, ClipsPanel, type ReusableClip, type VideoChoices } from "@/features/video/clips-panel";
 
 export const metadata: Metadata = { title: "Video Studio" };
 
@@ -56,7 +56,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     db.from("storyboard_scenes").select("id, kind, narration, on_screen_text, asset:assets(id, kind, duration_s)").eq("storyboard_id", storyboardId).order("position"),
     db.from("render_jobs").select("*, output:render_outputs(*)").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(20),
     db.from("publications").select("id, platform, status").eq("project_id", project.id).neq("status", "withdrawn").order("created_at"),
-    db.from("scene_visual_plans").select("scene_id, mode, video_task, prompt, duration_s, transition").eq("storyboard_id", storyboardId),
+    db.from("scene_visual_plans").select("scene_id, mode, video_task, prompt, duration_s, transition, model").eq("storyboard_id", storyboardId),
     db.from("scene_generations").select("*").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(200),
     getAiSettings(db),
     aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
@@ -79,14 +79,13 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const hasFrame = !!product.image_url && /^https?:\/\//i.test(product.image_url);
   const clipScenes: ClipScene[] = (scenes ?? []).map((s, i) => {
     const p = planOf.get(s.id);
-    const plan = { mode: (p?.mode ?? "product_motion") as VisualMode, video_task: (p?.video_task ?? "video_product") as VideoTask, prompt: p?.prompt ?? "", duration_s: p?.duration_s ?? DEFAULT_CLIP_SECONDS, transition: (p?.transition ?? "auto") as TransitionChoice };
-    const estimate = (task: VideoTask) => {
-      if ("error" in catalog) return null;
-      const model = modelFor(task, aiSettings.models);
-      const info = catalog.video.find((m) => m.id === model);
-      if (!info) return null;
-      const spec = clipSpec(info, plan.duration_s, task === "video_product" && hasFrame);
-      return { model, seconds: spec.duration, thb: usdToThb(spec.estUsd), priced: spec.priced };
+    const plan = {
+      mode: (p?.mode ?? "product_motion") as VisualMode,
+      video_task: (p?.video_task ?? "video_product") as VideoTask,
+      prompt: p?.prompt ?? "",
+      duration_s: p?.duration_s ?? DEFAULT_CLIP_SECONDS,
+      transition: (p?.transition ?? "auto") as TransitionChoice,
+      model: p?.model ?? null,
     };
     const gens = (generations ?? []).filter((g) => g.scene_id === s.id);
     // Latest few attempts plus the approved one if it's older.
@@ -97,7 +96,6 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
       kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind,
       narration: s.narration,
       plan,
-      estimates: { video_product: estimate("video_product"), video_lifestyle: estimate("video_lifestyle") },
       generations: shown.map((g) => ({
         id: g.id,
         status: g.status,
@@ -113,6 +111,15 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
       })),
     };
   });
+
+  // Video models per task (from the live catalog) for the per-scene pick; estimates are worked
+  // out in the panel from each model's prices, so they follow the pick and the duration.
+  const videoChoices: VideoChoices = Object.fromEntries(
+    VIDEO_TASKS.map((task) => {
+      const list = "error" in catalog ? [] : videoModelsFor(task, catalog.video);
+      return [task, { defaultModel: modelFor(task, aiSettings.models), models: list.map((m) => ({ id: m.id, name: m.name, durations: m.durations, resolutions: m.resolutions, pricing: m.pricing })) }];
+    }),
+  ) as VideoChoices;
 
   const preview = buildTimeline({
     productName: product.name,
@@ -230,7 +237,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
           )}
           <section aria-labelledby="clips-h">
             <SectionHeader id="clips-h" title="คลิป AI ต่อฉาก" description="สร้างคลิปด้วย AI เฉพาะฉากที่ต้องการ ตรวจแล้วกด “ใช้คลิปนี้” — ฉากอื่นใช้ภาพสินค้า + motion graphics ได้ฟรี · render ได้เมื่อทุกฉากที่ตั้งเป็นคลิป AI มีคลิปที่อนุมัติแล้ว" />
-            <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} reusable={reusable} />
+            <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} reusable={reusable} choices={videoChoices} usdThb={usdThbRate()} hasFrame={hasFrame} />
           </section>
         </div>
 

@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AI_CLIP_LABEL, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
+import type { VideoModel } from "@/features/ai/openrouter";
+import { AI_CLIP_LABEL, clipSpec, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
 import { TRANSITION_LABEL, type TransitionChoice, TRANSITIONS } from "./timeline";
 import { cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
@@ -35,11 +36,13 @@ export interface ClipScene {
   n: number;
   kindLabel: string;
   narration: string;
-  plan: { mode: VisualMode; video_task: VideoTask; prompt: string; duration_s: number; transition: TransitionChoice };
-  /** Per task: model and estimate for this scene's duration. */
-  estimates: Record<VideoTask, { model: string; seconds: number; thb: number; priced: boolean } | null>;
+  /** `model`: this scene's pick; null = the model set for its task in Settings. */
+  plan: { mode: VisualMode; video_task: VideoTask; prompt: string; duration_s: number; transition: TransitionChoice; model: string | null };
   generations: ClipGeneration[];
 }
+
+/** Video models a scene can pick per task, and the one Settings uses. */
+export type VideoChoices = Record<VideoTask, { defaultModel: string; models: (Pick<VideoModel, "id" | "name" | "durations" | "resolutions" | "pricing">)[] }>;
 
 /** An approved clip of the same product in another script (version), reusable for free (AI-6). */
 export interface ReusableClip {
@@ -54,7 +57,26 @@ const TONE: Record<string, "neutral" | "info" | "success" | "danger" | "warning"
  * AI clips per scene (docs/AI_VIDEO_PLAN.md AI-3): plan each scene (motion graphics or an AI clip
  * and its prompt), generate or regenerate one scene at a time, watch the result, approve or reject.
  */
-export function ClipsPanel({ storyboardId, scenes, aiReady, approved, reusable = [] }: { storyboardId: string; scenes: ClipScene[]; aiReady: boolean; approved: boolean; reusable?: ReusableClip[] }) {
+export function ClipsPanel({
+  storyboardId,
+  scenes,
+  aiReady,
+  approved,
+  reusable = [],
+  choices,
+  usdThb,
+  hasFrame,
+}: {
+  storyboardId: string;
+  scenes: ClipScene[];
+  aiReady: boolean;
+  approved: boolean;
+  reusable?: ReusableClip[];
+  choices: VideoChoices;
+  usdThb: number;
+  /** The product has a photo URL to use as the first frame. */
+  hasFrame: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -90,25 +112,29 @@ export function ClipsPanel({ storyboardId, scenes, aiReady, approved, reusable =
       {error && <Notice tone="error">{error}</Notice>}
       <ol className="flex flex-col gap-3">
         {scenes.map((s) => (
-          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}-${s.plan.transition}`} scene={s} approved={approved} reusable={reusable} />
+          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}-${s.plan.transition}-${s.plan.model ?? ""}`} scene={s} approved={approved} reusable={reusable} choices={choices} usdThb={usdThb} hasFrame={hasFrame} />
         ))}
       </ol>
     </div>
   );
 }
 
-function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: boolean; reusable: ReusableClip[] }) {
+function SceneClip({ scene, approved, reusable, choices, usdThb, hasFrame }: { scene: ClipScene; approved: boolean; reusable: ReusableClip[]; choices: VideoChoices; usdThb: number; hasFrame: boolean }) {
   const router = useRouter();
   const [v, setV] = useState(scene.plan);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [reuseId, setReuseId] = useState(reusable[0]?.id ?? "");
-  const dirty = v.mode !== scene.plan.mode || v.video_task !== scene.plan.video_task || v.prompt !== scene.plan.prompt || v.duration_s !== scene.plan.duration_s || v.transition !== scene.plan.transition;
+  const dirty = v.mode !== scene.plan.mode || v.video_task !== scene.plan.video_task || v.prompt !== scene.plan.prompt || v.duration_s !== scene.plan.duration_s || v.transition !== scene.plan.transition || v.model !== scene.plan.model;
   const latest = scene.generations[0];
   const inFlight = latest && (latest.status === "queued" || latest.status === "generating");
   const chosen = scene.generations.find((g) => g.reviewStatus === "approved");
-  const est = v.mode === "ai_video" ? scene.estimates[v.video_task] : null;
+  const choice = choices[v.video_task];
+  const modelId = v.model ?? choice.defaultModel;
+  const info = choice.models.find((m) => m.id === modelId);
+  const spec = v.mode === "ai_video" && info ? clipSpec(info, v.duration_s, v.video_task === "video_product" && hasFrame) : null;
+  const est = spec ? { model: modelId, seconds: spec.duration, thb: Math.round(spec.estUsd * usdThb * 100) / 100, priced: spec.priced } : null;
   const id = (k: string) => `clip-${scene.id}-${k}`;
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>, done?: string) =>
@@ -184,6 +210,24 @@ function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: 
         {v.mode === "ai_video" && (
           <>
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor={id("model")}>โมเดลวิดีโอ</Label>
+              <NativeSelect id={id("model")} value={v.model ?? ""} onChange={(e) => setV({ ...v, model: e.target.value || null })} className="max-w-full">
+                <option value="">ตามหน้าตั้งค่า ({choice.defaultModel})</option>
+                {choice.models
+                  .filter((m) => m.id !== choice.defaultModel || v.model === m.id)
+                  .map((m) => {
+                    const s = clipSpec(m, v.duration_s, v.video_task === "video_product" && hasFrame);
+                    return (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {s.duration} วิ ≈ {thb(s.estUsd * usdThb)}
+                        {s.priced ? "" : " (ประมาณแบบเผื่อ)"}
+                      </option>
+                    );
+                  })}
+                {v.model && !choice.models.some((m) => m.id === v.model) && <option value={v.model}>{v.model} (ไม่พบใน catalog)</option>}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor={id("prompt")}>Prompt (ภาษาอังกฤษ)</Label>
               <Textarea id={id("prompt")} rows={3} maxLength={MAX_PROMPT_CHARS} value={v.prompt} onChange={(e) => setV({ ...v, prompt: e.target.value })} placeholder="e.g. Slow 360° rotation of the earbuds on a white marble surface, soft studio light, shallow depth of field" />
             </div>
@@ -193,7 +237,7 @@ function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: 
                 <Input id={id("dur")} type="number" min={1} max={20} className="w-24" value={v.duration_s} onChange={(e) => setV({ ...v, duration_s: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })} />
               </div>
               <p className="pb-2 text-xs text-muted-foreground">
-                {est ? `${est.model} · ${est.seconds} วิ · ประมาณ ${thb(est.thb)}${est.priced ? "" : " (ราคาตาม token — ประมาณแบบเผื่อ)"}${dirty ? " — บันทึกก่อนเพื่อคำนวณใหม่" : ""}` : "ไม่พบโมเดลใน catalog — ตรวจหน้าตั้งค่า"}
+                {est ? `${est.model} · ${est.seconds} วิ · ประมาณ ${thb(est.thb)}${est.priced ? "" : " (ราคาตาม token — ประมาณแบบเผื่อ)"}${dirty ? " — บันทึกแผนภาพก่อนกดสร้าง" : ""}` : "ไม่พบโมเดลใน catalog — เลือกรุ่นอื่น"}
               </p>
             </div>
           </>

@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkAiSpend } from "@/features/ai/budget";
-import { buildVisualPlanPrompt, clipBlocker, clipSpec, DEFAULT_CLIP_SECONDS, MAX_PROMPT_CHARS, parseVisualPlanJson, VIDEO_TASKS, VISUAL_MODES, VISUAL_PLAN_SCHEMA } from "@/features/ai/clips";
+import { buildVisualPlanPrompt, clipBlocker, clipSpec, DEFAULT_CLIP_SECONDS, MAX_PROMPT_CHARS, parseVisualPlanJson, VIDEO_TASK_LABEL, VIDEO_TASKS, VISUAL_MODES, VISUAL_PLAN_SCHEMA } from "@/features/ai/clips";
 import { parseJsonReply } from "@/features/ai/json";
-import { modelFor, usdToThb } from "@/features/ai/models";
+import { isModelId, modelFor, usdToThb, videoModelsFor } from "@/features/ai/models";
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { getAiSettings, getCatalog } from "@/features/ai/queries";
 import { runAiChat } from "@/features/ai/run";
@@ -47,6 +47,8 @@ const planSchema = z.object({
   prompt: z.string().trim().max(MAX_PROMPT_CHARS, `prompt ยาวเกิน ${MAX_PROMPT_CHARS} ตัวอักษร`),
   duration_s: z.coerce.number().int().min(1).max(20),
   transition: z.enum(TRANSITIONS).optional(),
+  /** Video model for this scene; null = the one set for its task in Settings. */
+  model: z.string().refine(isModelId, "รหัสโมเดลไม่ถูกต้อง").nullable().optional(),
 });
 
 export async function saveScenePlan(sceneId: string, input: z.input<typeof planSchema>): Promise<ActionResult<null>> {
@@ -55,6 +57,12 @@ export async function saveScenePlan(sceneId: string, input: z.input<typeof planS
   const { supabase, user } = await requireUser();
   const scene = await sceneWithStoryboard(supabase, sceneId);
   if (!scene) return { ok: false, error: "ไม่พบฉาก" };
+  if (parsed.data.model) {
+    const catalog = await getCatalog();
+    if (!("error" in catalog) && !videoModelsFor(parsed.data.video_task, catalog.video).some((m) => m.id === parsed.data.model)) {
+      return { ok: false, error: `${parsed.data.model} ใช้กับ “${VIDEO_TASK_LABEL[parsed.data.video_task]}” ไม่ได้ — เลือกรุ่นอื่น` };
+    }
+  }
   const { error } = await supabase.from("scene_visual_plans").upsert({ scene_id: sceneId, owner_id: user.id, storyboard_id: scene.storyboard_id, ...parsed.data }, { onConflict: "scene_id" });
   if (error) return { ok: false, error: `บันทึกไม่สำเร็จ: ${error.message}` };
   revalidatePath(videoPath(scene.storyboard_id));
@@ -105,7 +113,7 @@ export async function queueSceneClip(sceneId: string, confirmed = false): Promis
   if (!scene?.storyboard.project) return { ok: false, error: "ไม่พบฉาก" };
   if (scene.storyboard.status !== "approved") return { ok: false, error: "อนุมัติสคริปต์ก่อนสร้างคลิป AI" };
   const [{ data: plan }, { data: product }, settings, catalog] = await Promise.all([
-    supabase.from("scene_visual_plans").select("mode, video_task, prompt, duration_s").eq("scene_id", sceneId).maybeSingle(),
+    supabase.from("scene_visual_plans").select("mode, video_task, prompt, duration_s, model").eq("scene_id", sceneId).maybeSingle(),
     supabase.from("products").select("image_url").eq("id", scene.storyboard.project.product_id).maybeSingle(),
     getAiSettings(supabase),
     getCatalog(),
@@ -114,12 +122,13 @@ export async function queueSceneClip(sceneId: string, confirmed = false): Promis
   const blocker = clipBlocker(plan, firstFrame);
   if (blocker) return { ok: false, error: blocker };
   const task = plan!.video_task as (typeof VIDEO_TASKS)[number];
-  const model = modelFor(task, settings.models);
+  // The scene's own pick, else the model set for its task in Settings.
+  const model = plan!.model ?? modelFor(task, settings.models);
   if ("error" in catalog) return { ok: false, error: catalog.error };
   const info = catalog.video.find((m) => m.id === model);
-  if (!info) return { ok: false, error: `ไม่พบโมเดล ${model} ใน catalog ของ OpenRouter ตอนนี้ — เลือกรุ่นใหม่ในหน้าตั้งค่า` };
+  if (!info) return { ok: false, error: `ไม่พบโมเดล ${model} ใน catalog ของ OpenRouter ตอนนี้ — เลือกรุ่นใหม่ในฉากนี้หรือหน้าตั้งค่า` };
   const useFrame = task === "video_product" && info.frameImages.includes("first_frame") ? firstFrame : null;
-  if (task === "video_product" && !useFrame) return { ok: false, error: `${model} ใช้รูปเป็นเฟรมแรกไม่ได้ — เลือกโมเดลอื่นสำหรับ “คลิปสินค้าเคลื่อนไหว” ในหน้าตั้งค่า` };
+  if (task === "video_product" && !useFrame) return { ok: false, error: `${model} ใช้รูปเป็นเฟรมแรกไม่ได้ — เลือกโมเดลอื่นสำหรับ “คลิปสินค้าเคลื่อนไหว”` };
   const spec = clipSpec(info, plan!.duration_s, !!useFrame);
   const estThb = usdToThb(spec.estUsd);
 

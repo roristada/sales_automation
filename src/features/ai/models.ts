@@ -53,6 +53,7 @@ export const DEFAULT_MODELS: Record<AiTask, string> = {
 export const TEST_MODEL = DEFAULT_MODELS.script;
 
 const MODEL_ID = /^[a-z0-9][\w.-]*\/[\w.:~-]+$/i;
+export const isModelId = (v: string) => v.length <= 200 && MODEL_ID.test(v);
 
 /** Stored picks, keeping only known tasks with a well-formed model id. */
 export function parseModelPicks(value: unknown): Partial<Record<AiTask, string>> {
