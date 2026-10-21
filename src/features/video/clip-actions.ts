@@ -258,9 +258,18 @@ export async function autoVisuals(storyboardId: string, confirmed = false): Prom
     supabase.from("scene_generations").select("scene_id, status, review_status").eq("storyboard_id", storyboardId),
   ]);
   const covered = new Set((gens ?? []).filter((g) => g.review_status === "approved" || g.status === "queued" || g.status === "generating").map((g) => g.scene_id));
-  const todo = (plans ?? []).filter((p) => !covered.has(p.scene_id));
-  const requests: ClipRequest[] = [];
+  // Never more clips than the level allows, even when an older or manual plan has more AI
+  // scenes: the first ones (in scene order) count, the rest are named, not generated.
+  const { data: order } = await supabase.from("storyboard_scenes").select("id, position").eq("storyboard_id", storyboardId).order("position");
+  const position = new Map((order ?? []).map((s) => [s.id, s.position]));
+  const aiInOrder = [...(plans ?? [])].sort((x, y) => (position.get(x.scene_id) ?? 0) - (position.get(y.scene_id) ?? 0));
+  const allowed = Math.max(0, VISUAL_LEVEL[level].maxAiScenes - aiInOrder.filter((p) => covered.has(p.scene_id)).length);
+  const missing = aiInOrder.filter((p) => !covered.has(p.scene_id));
+  const todo = missing.slice(0, allowed);
   const skipped: string[] = [];
+  const over = missing.slice(allowed).map((p) => (position.get(p.scene_id) ?? 0) + 1);
+  if (over.length) skipped.push(`ฉากที่ ${over.join(", ")} ตั้งเป็นคลิป AI แต่ระดับ “${VISUAL_LEVEL[level].label}” สร้างได้ ${VISUAL_LEVEL[level].maxAiScenes} คลิป — ไม่ได้สร้างให้ (เปลี่ยนระดับเป็นจัดเต็ม, กดสร้างเองในฉากนั้น หรือเปลี่ยนฉากนั้นเป็นรูปสินค้า)`);
+  const requests: ClipRequest[] = [];
   for (const p of todo) {
     const req = await clipRequest(supabase, p.scene_id);
     if (req.ok) requests.push(req.data);

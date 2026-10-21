@@ -155,6 +155,11 @@ export function ClipsToolbar({
           <p className="text-[13px]">
             <span className="font-medium">ระดับภาพ: {level.label}</span> <span className="text-muted-foreground">— {level.hint}</span>
             {aiPlanned.length > 0 && <span className="block text-xs text-muted-foreground">คลิป AI {aiPlanned.length} ฉาก{missing ? ` · ยังไม่มีคลิป ${missing} ฉาก` : " · มีคลิปครบแล้ว"}</span>}
+            {aiPlanned.length > level.maxAiScenes && (
+              <span className="block text-xs text-warning">
+                แผนตอนนี้มีคลิป AI {aiPlanned.length} ฉาก มากกว่าที่ระดับนี้สร้างให้ ({level.maxAiScenes}) — ปุ่มนี้จะสร้างแค่ {level.maxAiScenes} ฉากแรก · กด “วางแผนภาพใหม่ทั้งหมด” เพื่อให้ตรงระดับ
+              </span>
+            )}
           </p>
           <Button type="button" onClick={() => auto()} disabled={pending || busy || (aiPlanned.length > 0 && !missing)} className="shrink-0">
             <Wand2 aria-hidden /> {pending ? "กำลังจัดภาพ…" : busy ? "กำลังสร้างคลิป…" : aiPlanned.length && !missing ? "จัดภาพครบแล้ว" : "จัดภาพให้อัตโนมัติ"}
