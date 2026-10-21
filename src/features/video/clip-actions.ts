@@ -3,15 +3,32 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkAiSpend } from "@/features/ai/budget";
-import { buildVisualPlanPrompt, clipBlocker, clipSpec, DEFAULT_CLIP_SECONDS, MAX_PROMPT_CHARS, parseVisualPlanJson, VIDEO_TASK_LABEL, VIDEO_TASKS, VISUAL_MODES, VISUAL_PLAN_SCHEMA } from "@/features/ai/clips";
+import {
+  buildVisualPlanPrompt,
+  capAiScenes,
+  clipBlocker,
+  clipSpec,
+  DEFAULT_CLIP_SECONDS,
+  DEFAULT_VISUAL_LEVEL,
+  MAX_PROMPT_CHARS,
+  parseVisualPlanJson,
+  VIDEO_TASK_LABEL,
+  VIDEO_TASKS,
+  VISUAL_LEVEL,
+  VISUAL_MODES,
+  VISUAL_PLAN_SCHEMA,
+  type VisualLevel,
+  type VisualPlan,
+} from "@/features/ai/clips";
 import { parseJsonReply } from "@/features/ai/json";
 import { isModelId, modelFor, usdToThb, videoModelsFor } from "@/features/ai/models";
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
-import { getAiSettings, getCatalog } from "@/features/ai/queries";
+import { getAiSettings, getCatalog, getVideoOverrides } from "@/features/ai/queries";
 import { runAiChat } from "@/features/ai/run";
 import { loadFacts, PRODUCT_COLUMNS } from "@/features/content/queries";
 import { SCENE_KIND_LABEL } from "@/features/content/templates";
 import type { ActionResult } from "@/features/products/actions";
+import type { Database } from "@/lib/supabase/database.types";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { TRANSITIONS } from "./timeline";
 
@@ -23,6 +40,11 @@ import { TRANSITIONS } from "./timeline";
 
 const uuid = z.uuid();
 const videoPath = (id: string) => `/videos/${id}`;
+/** Video Studio and the video workspace both show a script's visuals. */
+function revalidateVideo(storyboardId: string) {
+  revalidatePath(videoPath(storyboardId));
+  revalidatePath(`/workspace/${storyboardId}`);
+}
 
 async function requireUser() {
   const { supabase, user } = await getCurrentUser();
@@ -65,22 +87,42 @@ export async function saveScenePlan(sceneId: string, input: z.input<typeof planS
   }
   const { error } = await supabase.from("scene_visual_plans").upsert({ scene_id: sceneId, owner_id: user.id, storyboard_id: scene.storyboard_id, ...parsed.data }, { onConflict: "scene_id" });
   if (error) return { ok: false, error: `บันทึกไม่สำเร็จ: ${error.message}` };
-  revalidatePath(videoPath(scene.storyboard_id));
+  revalidateVideo(scene.storyboard_id);
   return { ok: true, data: null };
 }
 
-/** The scene-prompt model plans every scene: AI clip or motion graphics, and an English prompt. */
-export async function planSceneVisuals(storyboardId: string): Promise<ActionResult<{ aiScenes: number; costThb: number }>> {
-  if (!uuid.safeParse(storyboardId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
-  const { supabase, user } = await requireUser();
-  const { data: sb } = await supabase.from("storyboards").select("id, project:content_projects(product_id)").eq("id", storyboardId).maybeSingle();
-  const { data: product } = sb?.project ? await supabase.from("products").select(PRODUCT_COLUMNS).eq("id", sb.project.product_id).maybeSingle() : { data: null };
+/** The video's visual level (workspace setting), or the default. */
+async function visualLevelOf(db: Db, storyboardId: string): Promise<VisualLevel> {
+  const o = await getVideoOverrides(db, storyboardId);
+  return (o?.visualLevel as VisualLevel | null) ?? DEFAULT_VISUAL_LEVEL;
+}
+
+/**
+ * The scene-prompt model plans every scene (AI clip or motion graphics, and an English prompt),
+ * with at most `maxAiScenes` AI clips. Saved plans keep their duration, transition and model.
+ */
+async function planVisuals(db: Db, userId: string, storyboardId: string, maxAiScenes: number): Promise<ActionResult<{ aiScenes: number; costThb: number }>> {
+  const { data: sb } = await db.from("storyboards").select("id, project:content_projects(product_id)").eq("id", storyboardId).maybeSingle();
+  const { data: product } = sb?.project ? await db.from("products").select(PRODUCT_COLUMNS).eq("id", sb.project.product_id).maybeSingle() : { data: null };
   if (!sb || !product) return { ok: false, error: "ไม่พบสคริปต์" };
   const [{ data: scenes }, { facts }] = await Promise.all([
-    supabase.from("storyboard_scenes").select("id, kind, narration, on_screen_text").eq("storyboard_id", storyboardId).order("position"),
-    loadFacts(supabase, product),
+    db.from("storyboard_scenes").select("id, kind, narration, on_screen_text").eq("storyboard_id", storyboardId).order("position"),
+    loadFacts(db, product),
   ]);
   if (!scenes?.length) return { ok: false, error: "สคริปต์ไม่มีฉาก" };
+  const { data: existing } = await db.from("scene_visual_plans").select("scene_id, duration_s").eq("storyboard_id", storyboardId);
+  const duration = new Map((existing ?? []).map((p) => [p.scene_id, p.duration_s]));
+  const save = async (plans: VisualPlan[]) =>
+    db.from("scene_visual_plans").upsert(
+      scenes.map((s, i) => ({ scene_id: s.id, owner_id: userId, storyboard_id: storyboardId, ...plans[i], duration_s: duration.get(s.id) ?? DEFAULT_CLIP_SECONDS })),
+      { onConflict: "scene_id" },
+    );
+  // No AI scenes wanted: no AI call either.
+  if (maxAiScenes <= 0) {
+    const { error } = await save(scenes.map(() => ({ mode: "product_motion" as const, video_task: "video_product" as const, prompt: "" })));
+    if (error) return { ok: false, error: `บันทึกแผนภาพไม่สำเร็จ: ${error.message}` };
+    return { ok: true, data: { aiScenes: 0, costThb: 0 } };
+  }
   // Only facts a script may state: confirmed, current, with a value.
   const usable = facts.filter((f) => f.value && !["ai_estimate", "unavailable", "stale"].includes(f.status) && f.key !== "field:description").map((f) => ({ label: f.label, value: f.value!.slice(0, 300) }));
   const prompt = buildVisualPlanPrompt(
@@ -88,20 +130,86 @@ export async function planSceneVisuals(storyboardId: string): Promise<ActionResu
     product.category,
     usable,
     scenes.map((s) => ({ kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind, narration: s.narration, on_screen_text: s.on_screen_text })),
+    maxAiScenes,
   );
-  const run = await runAiChat(supabase, user.id, { task: "scene_prompt", messages: [{ role: "user", content: prompt }], schema: VISUAL_PLAN_SCHEMA, maxTokens: 4000, temperature: 0.5, productId: product.id, storyboardId });
+  const run = await runAiChat(db, userId, { task: "scene_prompt", messages: [{ role: "user", content: prompt }], schema: VISUAL_PLAN_SCHEMA, maxTokens: 4000, temperature: 0.5, productId: product.id, storyboardId });
   if (!run.ok) return { ok: false, error: run.error };
   const result = parseVisualPlanJson(parseJsonReply(run.result.text), scenes.length);
   if (!result.ok) return { ok: false, error: `${result.error} (ค่าใช้จ่ายครั้งนี้ ฿${run.costThb.toFixed(4)})` };
-  const { data: existing } = await supabase.from("scene_visual_plans").select("scene_id, duration_s").eq("storyboard_id", storyboardId);
-  const duration = new Map((existing ?? []).map((p) => [p.scene_id, p.duration_s]));
-  const { error } = await supabase.from("scene_visual_plans").upsert(
-    scenes.map((s, i) => ({ scene_id: s.id, owner_id: user.id, storyboard_id: storyboardId, ...result.plans[i], duration_s: duration.get(s.id) ?? DEFAULT_CLIP_SECONDS })),
-    { onConflict: "scene_id" },
-  );
+  const plans = capAiScenes(result.plans, maxAiScenes);
+  const { error } = await save(plans);
   if (error) return { ok: false, error: `บันทึกแผนภาพไม่สำเร็จ: ${error.message}` };
-  revalidatePath(videoPath(storyboardId));
-  return { ok: true, data: { aiScenes: result.plans.filter((p) => p.mode === "ai_video").length, costThb: run.costThb } };
+  return { ok: true, data: { aiScenes: plans.filter((p) => p.mode === "ai_video").length, costThb: run.costThb } };
+}
+
+/** "ให้ AI วางแผนภาพทุกฉาก": replans every scene within the video's visual level. */
+export async function planSceneVisuals(storyboardId: string): Promise<ActionResult<{ aiScenes: number; costThb: number }>> {
+  if (!uuid.safeParse(storyboardId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const { supabase, user } = await requireUser();
+  const level = await visualLevelOf(supabase, storyboardId);
+  // Replanning by hand allows AI scenes even on "save" (the user asked for a plan).
+  const res = await planVisuals(supabase, user.id, storyboardId, Math.max(1, VISUAL_LEVEL[level].maxAiScenes));
+  if (res.ok) revalidateVideo(storyboardId);
+  return res;
+}
+
+interface ClipRequest {
+  row: Database["public"]["Tables"]["scene_generations"]["Insert"];
+  estThb: number;
+}
+
+/** What queueing a scene's clip would send and cost, or why it can't be queued. */
+async function clipRequest(db: Db, sceneId: string): Promise<{ ok: true; data: ClipRequest } | { ok: false; error: string }> {
+  const scene = await sceneWithStoryboard(db, sceneId);
+  if (!scene?.storyboard.project) return { ok: false, error: "ไม่พบฉาก" };
+  if (scene.storyboard.status !== "approved") return { ok: false, error: "อนุมัติสคริปต์ก่อนสร้างคลิป AI" };
+  const [{ data: plan }, { data: product }, settings, catalog] = await Promise.all([
+    db.from("scene_visual_plans").select("mode, video_task, prompt, duration_s, model").eq("scene_id", sceneId).maybeSingle(),
+    db.from("products").select("image_url").eq("id", scene.storyboard.project.product_id).maybeSingle(),
+    getAiSettings(db, { storyboardId: scene.storyboard_id }),
+    getCatalog(),
+  ]);
+  const firstFrame = product?.image_url && /^https?:\/\//i.test(product.image_url) ? product.image_url : null;
+  const blocker = clipBlocker(plan, firstFrame);
+  if (blocker) return { ok: false, error: blocker };
+  const task = plan!.video_task as (typeof VIDEO_TASKS)[number];
+  // The scene's own pick, else this video's, else Settings.
+  const model = plan!.model ?? modelFor(task, settings.models);
+  if ("error" in catalog) return { ok: false, error: catalog.error };
+  const info = catalog.video.find((m) => m.id === model);
+  if (!info) return { ok: false, error: `ไม่พบโมเดล ${model} ใน catalog ของ OpenRouter ตอนนี้ — เลือกรุ่นใหม่ในฉากนี้หรือในตั้งค่าวิดีโอนี้` };
+  const useFrame = task === "video_product" && info.frameImages.includes("first_frame") ? firstFrame : null;
+  if (task === "video_product" && !useFrame) return { ok: false, error: `${model} ใช้รูปเป็นเฟรมแรกไม่ได้ — เลือกโมเดลอื่นสำหรับ “คลิปสินค้าเคลื่อนไหว”` };
+  const spec = clipSpec(info, plan!.duration_s, !!useFrame);
+  const estThb = usdToThb(spec.estUsd);
+  return {
+    ok: true,
+    data: {
+      estThb,
+      row: { scene_id: sceneId, storyboard_id: scene.storyboard_id, video_task: task, model, prompt: plan!.prompt.trim(), duration_s: spec.duration, first_frame_url: useFrame, est_cost_thb: estThb, resolution: spec.resolution },
+    },
+  };
+}
+
+/** Daily/monthly caps, the per-video cap and the confirm threshold, for `estimate` more on this video. */
+async function guardClips(db: Db, storyboardId: string, estimate: number, confirmed: boolean) {
+  const [{ data: limits }, { data: spent }, { data: logged }, { data: inFlight }, settings] = await Promise.all([
+    db.from("spending_limits").select("daily_thb, monthly_thb").maybeSingle(),
+    db.rpc("spend_summary"),
+    db.from("ai_requests").select("cost_thb").eq("storyboard_id", storyboardId),
+    // Clips still generating aren't logged yet: count their estimates toward the caps.
+    db.from("scene_generations").select("est_cost_thb").eq("storyboard_id", storyboardId).in("status", ["queued", "generating"]),
+    getAiSettings(db, { storyboardId }),
+  ]);
+  const pending = (inFlight ?? []).reduce((n, r) => n + Number(r.est_cost_thb), 0);
+  return checkAiSpend({
+    limits,
+    spent: { today_thb: Number(spent?.[0]?.today_thb ?? 0) + pending, month_thb: Number(spent?.[0]?.month_thb ?? 0) + pending },
+    settings,
+    videoSpent: (logged ?? []).reduce((n, r) => n + Number(r.cost_thb), 0) + pending,
+    estimate,
+    confirmed,
+  });
 }
 
 /** Queues one clip for the worker, after the spend guard. One in flight per scene (DB index). */
@@ -109,62 +217,71 @@ export async function queueSceneClip(sceneId: string, confirmed = false): Promis
   if (!uuid.safeParse(sceneId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
   if (!isOpenRouterConfigured()) return { ok: false, error: "ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local" };
   const { supabase } = await requireUser();
-  const scene = await sceneWithStoryboard(supabase, sceneId);
-  if (!scene?.storyboard.project) return { ok: false, error: "ไม่พบฉาก" };
-  if (scene.storyboard.status !== "approved") return { ok: false, error: "อนุมัติสคริปต์ก่อนสร้างคลิป AI" };
-  const [{ data: plan }, { data: product }, settings, catalog] = await Promise.all([
-    supabase.from("scene_visual_plans").select("mode, video_task, prompt, duration_s, model").eq("scene_id", sceneId).maybeSingle(),
-    supabase.from("products").select("image_url").eq("id", scene.storyboard.project.product_id).maybeSingle(),
-    getAiSettings(supabase, { storyboardId: scene.storyboard_id }),
-    getCatalog(),
-  ]);
-  const firstFrame = product?.image_url && /^https?:\/\//i.test(product.image_url) ? product.image_url : null;
-  const blocker = clipBlocker(plan, firstFrame);
-  if (blocker) return { ok: false, error: blocker };
-  const task = plan!.video_task as (typeof VIDEO_TASKS)[number];
-  // The scene's own pick, else the model set for its task in Settings.
-  const model = plan!.model ?? modelFor(task, settings.models);
-  if ("error" in catalog) return { ok: false, error: catalog.error };
-  const info = catalog.video.find((m) => m.id === model);
-  if (!info) return { ok: false, error: `ไม่พบโมเดล ${model} ใน catalog ของ OpenRouter ตอนนี้ — เลือกรุ่นใหม่ในฉากนี้หรือหน้าตั้งค่า` };
-  const useFrame = task === "video_product" && info.frameImages.includes("first_frame") ? firstFrame : null;
-  if (task === "video_product" && !useFrame) return { ok: false, error: `${model} ใช้รูปเป็นเฟรมแรกไม่ได้ — เลือกโมเดลอื่นสำหรับ “คลิปสินค้าเคลื่อนไหว”` };
-  const spec = clipSpec(info, plan!.duration_s, !!useFrame);
-  const estThb = usdToThb(spec.estUsd);
-
-  const [{ data: limits }, { data: spent }, { data: logged }, { data: inFlight }] = await Promise.all([
-    supabase.from("spending_limits").select("daily_thb, monthly_thb").maybeSingle(),
-    supabase.rpc("spend_summary"),
-    supabase.from("ai_requests").select("cost_thb").eq("storyboard_id", scene.storyboard_id),
-    // Clips still generating aren't logged yet: count their estimates toward the caps.
-    supabase.from("scene_generations").select("est_cost_thb").eq("storyboard_id", scene.storyboard_id).in("status", ["queued", "generating"]),
-  ]);
-  const pending = (inFlight ?? []).reduce((n, r) => n + Number(r.est_cost_thb), 0);
-  const guard = checkAiSpend({
-    limits,
-    spent: { today_thb: Number(spent?.[0]?.today_thb ?? 0) + pending, month_thb: Number(spent?.[0]?.month_thb ?? 0) + pending },
-    settings,
-    videoSpent: (logged ?? []).reduce((n, r) => n + Number(r.cost_thb), 0) + pending,
-    estimate: estThb,
-    confirmed,
-  });
+  const req = await clipRequest(supabase, sceneId);
+  if (!req.ok) return req;
+  const { row, estThb } = req.data;
+  const guard = await guardClips(supabase, row.storyboard_id, estThb, confirmed);
   if (!guard.ok) return guard.needsConfirm ? { ok: false, error: guard.message, needsConfirm: true } : { ok: false, error: guard.message };
-
-  const { error } = await supabase.from("scene_generations").insert({
-    scene_id: sceneId,
-    storyboard_id: scene.storyboard_id,
-    video_task: task,
-    model,
-    prompt: plan!.prompt.trim(),
-    duration_s: spec.duration,
-    first_frame_url: useFrame,
-    est_cost_thb: estThb,
-    resolution: spec.resolution,
-  });
+  const { error } = await supabase.from("scene_generations").insert(row);
   if (error?.code === "23505") return { ok: false, error: "ฉากนี้มีคลิปที่กำลังสร้างอยู่แล้ว" };
   if (error) return { ok: false, error: `เข้าคิวไม่สำเร็จ: ${error.message}` };
-  revalidatePath(videoPath(scene.storyboard_id));
+  revalidateVideo(row.storyboard_id);
   return { ok: true, data: { estThb } };
+}
+
+export type AutoVisualsResult = { ok: true; data: { aiScenes: number; queued: number; estThb: number; planCostThb: number; skipped: string[] } } | { ok: false; error: string; needsConfirm?: true };
+
+/**
+ * "จัดภาพให้อัตโนมัติ": plans the scenes within the video's visual level (only if nothing was
+ * planned yet, so manual changes stay), then queues a clip for every AI scene that has neither an
+ * approved clip nor one in flight — after one spend check and one confirmation for the total.
+ */
+export async function autoVisuals(storyboardId: string, confirmed = false): Promise<AutoVisualsResult> {
+  if (!uuid.safeParse(storyboardId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
+  const { supabase, user } = await requireUser();
+  const { data: sb } = await supabase.from("storyboards").select("status").eq("id", storyboardId).maybeSingle();
+  if (!sb) return { ok: false, error: "ไม่พบสคริปต์" };
+  if (sb.status !== "approved") return { ok: false, error: "อนุมัติสคริปต์ก่อน แล้วระบบจะจัดภาพและสร้างคลิปให้" };
+  const level = await visualLevelOf(supabase, storyboardId);
+
+  let planCostThb = 0;
+  const { count: planned } = await supabase.from("scene_visual_plans").select("scene_id", { count: "exact", head: true }).eq("storyboard_id", storyboardId);
+  if (!planned) {
+    if (VISUAL_LEVEL[level].maxAiScenes > 0 && !isOpenRouterConfigured()) return { ok: false, error: "ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY — เลือกระดับภาพ “ประหยัด” หรือตั้งค่าก่อน" };
+    const plan = await planVisuals(supabase, user.id, storyboardId, VISUAL_LEVEL[level].maxAiScenes);
+    if (!plan.ok) return plan;
+    planCostThb = plan.data.costThb;
+  }
+
+  const [{ data: plans }, { data: gens }] = await Promise.all([
+    supabase.from("scene_visual_plans").select("scene_id, mode").eq("storyboard_id", storyboardId).eq("mode", "ai_video"),
+    supabase.from("scene_generations").select("scene_id, status, review_status").eq("storyboard_id", storyboardId),
+  ]);
+  const covered = new Set((gens ?? []).filter((g) => g.review_status === "approved" || g.status === "queued" || g.status === "generating").map((g) => g.scene_id));
+  const todo = (plans ?? []).filter((p) => !covered.has(p.scene_id));
+  const requests: ClipRequest[] = [];
+  const skipped: string[] = [];
+  for (const p of todo) {
+    const req = await clipRequest(supabase, p.scene_id);
+    if (req.ok) requests.push(req.data);
+    else skipped.push(req.error);
+  }
+  const estThb = Math.round(requests.reduce((n, r) => n + r.estThb, 0) * 100) / 100;
+  if (requests.length) {
+    const guard = await guardClips(supabase, storyboardId, estThb, confirmed);
+    if (!guard.ok) {
+      revalidateVideo(storyboardId);
+      return guard.needsConfirm
+        ? { ok: false, error: `จะสร้างคลิป AI ${requests.length} คลิป รวมประมาณ ฿${estThb.toFixed(2)} — ${guard.message}`, needsConfirm: true }
+        : { ok: false, error: guard.message };
+    }
+    for (const r of requests) {
+      const { error } = await supabase.from("scene_generations").insert(r.row);
+      if (error && error.code !== "23505") skipped.push(`เข้าคิวไม่สำเร็จ: ${error.message}`);
+    }
+  }
+  revalidateVideo(storyboardId);
+  return { ok: true, data: { aiScenes: (plans ?? []).length, queued: requests.length, estThb, planCostThb, skipped } };
 }
 
 /** Approve (use in the video) or reject a finished clip. Approving replaces the scene's previous pick. */
@@ -179,7 +296,7 @@ export async function reviewSceneClip(generationId: string, decision: "approved"
   }
   const { error } = await supabase.from("scene_generations").update({ review_status: decision, review_note: note.trim() || null }).eq("id", generationId);
   if (error) return { ok: false, error: `บันทึกไม่สำเร็จ: ${error.message}` };
-  revalidatePath(videoPath(g.storyboard_id));
+  revalidateVideo(g.storyboard_id);
   return { ok: true, data: null };
 }
 
@@ -194,7 +311,7 @@ export async function reuseSceneClip(sceneId: string, generationId: string): Pro
   if (!scene) return { ok: false, error: "ไม่พบฉาก" };
   const { error } = await supabase.rpc("reuse_scene_clip", { target_scene: sceneId, source: generationId });
   if (error) return { ok: false, error: error.message };
-  revalidatePath(videoPath(scene.storyboard_id));
+  revalidateVideo(scene.storyboard_id);
   return { ok: true, data: null };
 }
 
@@ -204,6 +321,6 @@ export async function cancelSceneClip(generationId: string): Promise<ActionResul
   const { data: g } = await supabase.from("scene_generations").select("storyboard_id").eq("id", generationId).maybeSingle();
   const { data: ok, error } = await supabase.rpc("cancel_scene_generation", { generation: generationId });
   if (error || !ok) return { ok: false, error: "ยกเลิกไม่ได้ — งานอาจเสร็จไปแล้ว" };
-  if (g) revalidatePath(videoPath(g.storyboard_id));
+  if (g) revalidateVideo(g.storyboard_id);
   return { ok: true, data: null };
 }

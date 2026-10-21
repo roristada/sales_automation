@@ -236,3 +236,10 @@ Not done in AI-6: generating AI clips for a whole batch in one click (clips are 
 - [x] New content, the content list, product page and batches open the workspace; Script Studio and Video Studio link to it
 - [x] Tests — unit 162 ✅ (steps), RLS 33 ✅, e2e 18 ✅ (`workspace.spec.ts`: photos + thumbnail fix, this video's model saved and used as the scene default, facts, scene card with visual, render after approval, no sideways scroll at 390 px; screenshots checked by eye)
 
+### Workspace follow-up — one-click visuals, compact scene cards, cost card ✅ (2026-10-22)
+- [x] Visual level per video (ประหยัด 0 / สมดุล 1 / จัดเต็ม ≤3 AI scenes; `ai_overrides.visual_level`, default สมดุล); the planner is told the limit and prefers the opening scene, `capAiScenes` enforces it
+- [x] "จัดภาพให้อัตโนมัติ" (`autoVisuals`): plans within the level if nothing was planned yet (manual plans stay), then queues every AI scene without an approved or in-flight clip after one spend check and one confirmation for the total; "ประหยัด" makes no AI call
+- [x] Scene visual under a script card is one summary line (what it shows, model, length, estimate, transition) with the create button always visible (disabled with the reason: not approved / unsaved / no prompt); details behind "ปรับเอง"
+- [x] "ค่าใช้จ่ายวิดีโอนี้" card in the side rail: paid by kind (text / clips / voice), generating, clips still to make, voice if used, render free, total vs the per-video cap, and when each cost is charged
+- [x] Tests — unit 163 ✅ (`capAiScenes`, planner limit), RLS 33 ✅, e2e 18 ✅ (workspace: compact card, disabled create button with reason, cost card, "ประหยัด" one-click plans every scene as product photo)
+

@@ -77,13 +77,36 @@ test("one page per video: photos, settings, facts, script + visuals, render", as
   await expect(card.getByRole("heading", { name: "ฉากที่ 1" })).toBeVisible();
   await expect(card.getByLabel("คำพูด (เสียงพากย์)")).toBeVisible();
   await expect(card.getByRole("heading", { name: "คลิป AI & ทรานซิชัน" })).toBeVisible();
-  await card.getByLabel("ภาพของฉากนี้").selectOption("ai_video");
+  // One summary line; the details sit behind "ปรับเอง".
+  await expect(card.getByText("รูปสินค้า + motion graphics (ฟรี)")).toBeVisible();
+  await expect(card.getByLabel("ภาพของฉากนี้")).toBeHidden();
+  await card.getByRole("button", { name: "ใช้คลิป AI ในฉากนี้" }).click();
+  await expect(card.getByLabel("ภาพของฉากนี้")).toHaveValue("ai_video");
+  // The create button is always there, with the reason it can't be pressed yet.
+  await expect(card.getByRole("button", { name: "สร้างคลิป AI" })).toBeDisabled();
+  await expect(card.getByText("อนุมัติสคริปต์ก่อน จึงจะสร้างคลิปได้")).toBeVisible();
   if (env("OPENROUTER_API_KEY")) await expect(card.getByLabel("โมเดลวิดีโอ").locator("option").first()).toHaveText("ตามหน้าตั้งค่า (google/veo-3.1-lite)");
 
-  // 5. After approval the render controls are here too.
+  // The cost card is on the page from the start.
+  const costCard = page.getByRole("region", { name: "ค่าใช้จ่ายวิดีโอนี้" });
+  await expect(costCard.getByText("จ่ายแล้ว")).toBeVisible();
+  await expect(costCard.getByText("ฟรี", { exact: true })).toBeVisible();
+
+  // 5. After approval: one click arranges the visuals ("ประหยัด" = no AI clips, free) and the
+  // render controls are here too.
   const admin = createClient<Database>(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   expect((await admin.from("storyboards").update({ status: "approved", approved_at: new Date().toISOString() }).eq("id", storyboardId)).error).toBeNull();
   await page.reload();
+  if (env("OPENROUTER_API_KEY")) {
+    await page.getByRole("radio", { name: /ประหยัด/ }).check();
+    await page.getByRole("button", { name: "บันทึกการตั้งค่าของวิดีโอนี้" }).click();
+    await expect(page.getByText("บันทึกการตั้งค่าของวิดีโอนี้แล้ว")).toBeVisible();
+    await expect(page.getByText(/ระดับภาพ: ประหยัด/)).toBeVisible();
+    await page.getByRole("button", { name: "จัดภาพให้อัตโนมัติ" }).click();
+    await expect(page.getByText("จัดภาพแล้ว — ทุกฉากใช้รูปสินค้า (ฟรี)")).toBeVisible();
+    const { data: plans } = await admin.from("scene_visual_plans").select("mode").eq("storyboard_id", storyboardId);
+    expect(plans?.map((p) => p.mode)).toEqual(["product_motion", "product_motion", "product_motion"]);
+  }
   await expect(page.getByRole("region", { name: "5. Render & เผยแพร่" }).getByRole("button", { name: "Render วิดีโอ" })).toBeVisible();
   await expect(page.getByRole("link", { name: "ไปที่ Render" })).toHaveAttribute("href", "#render");
   await page.setViewportSize({ width: 1440, height: 900 });

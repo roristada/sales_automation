@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AI_TASKS, type AiTask, isModelId, speechModelsFor, TASK_KIND, textModelsFor, VIDEO_OVERRIDE_TASKS, videoModelsFor } from "@/features/ai/models";
+import { VISUAL_LEVELS } from "@/features/ai/clips";
 import { getCatalog } from "@/features/ai/queries";
 import { VOICE_PATTERN } from "@/features/ai/voiceover";
 import type { ActionResult } from "@/features/products/actions";
@@ -26,6 +27,7 @@ const settingsSchema = z.object({
   /** "" or missing = use the Settings default. */
   models: z.record(z.string(), z.string()),
   ttsVoice: z.string().trim().max(100),
+  visualLevel: z.enum(VISUAL_LEVELS),
 });
 
 /** Saves this video's AI picks (all its script versions). Empty = back to the Settings default. */
@@ -55,7 +57,7 @@ export async function saveVideoSettings(projectId: string, input: z.input<typeof
   const { supabase } = await requireUser();
   const { data, error } = await supabase
     .from("content_projects")
-    .update({ ai_overrides: { models, ...(voice ? { tts_voice: voice } : {}) } })
+    .update({ ai_overrides: { models, visual_level: parsed.data.visualLevel, ...(voice ? { tts_voice: voice } : {}) } })
     .eq("id", projectId)
     .select("id, storyboards(id)")
     .maybeSingle();

@@ -98,3 +98,23 @@ describe("AI clips in the render (AI-4)", () => {
     expect(composeCaption(base)).toBe("หูฟัง\n\n#ได้รับค่าคอมมิชชัน");
   });
 });
+
+describe("visual levels (one choice per video)", () => {
+  it("keeps at most N AI scenes, the opening one first, and tells the planner the limit", async () => {
+    const { capAiScenes, VISUAL_LEVEL } = await import("./clips");
+    const plans = [
+      { mode: "product_motion" as const, video_task: "video_product" as const, prompt: "" },
+      { mode: "ai_video" as const, video_task: "video_product" as const, prompt: "a" },
+      { mode: "ai_video" as const, video_task: "video_lifestyle" as const, prompt: "b" },
+      { mode: "ai_video" as const, video_task: "video_product" as const, prompt: "c" },
+    ];
+    expect(capAiScenes(plans, 1).map((p) => p.mode)).toEqual(["product_motion", "ai_video", "product_motion", "product_motion"]);
+    expect(capAiScenes(plans, 1)[2].prompt).toBe("");
+    expect(capAiScenes(plans, 0).every((p) => p.mode === "product_motion")).toBe(true);
+    expect(capAiScenes(plans, 5)).toEqual(plans);
+    expect(VISUAL_LEVEL.balanced.maxAiScenes).toBe(1);
+    const p1 = buildVisualPlanPrompt("x", null, [], [{ kindLabel: "แนะนำ", narration: "n", on_screen_text: "" }], 1);
+    expect(p1).toMatch(/at most 1 scene where/);
+    expect(p1).toMatch(/prefer the opening scene/);
+  });
+});

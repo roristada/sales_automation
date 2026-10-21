@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { PageHeader, SectionHeader } from "@/components/shared/page-header";
 import { Chip, StatusBadge } from "@/components/shared/status-badge";
+import { DEFAULT_VISUAL_LEVEL, VISUAL_LEVEL, type VisualLevel } from "@/features/ai/clips";
 import { DEFAULT_MODELS, modelFor, speechModelsFor, TASK_LABEL, textModelsFor, textPriceLabel, usdToThb, VIDEO_OVERRIDE_TASKS, videoModelsFor } from "@/features/ai/models";
 import { isOpenRouterConfigured, videoPricePerSecond } from "@/features/ai/openrouter";
 import { getAiSettings, getCatalog, getVideoOverrides } from "@/features/ai/queries";
@@ -20,6 +21,7 @@ import { ClipsToolbar, SceneVisual } from "@/features/video/clips-panel";
 import { sceneKey } from "@/features/video/scene-key";
 import { loadVideoStudio } from "@/features/video/studio-data";
 import { OutputSection, RenderAside, RenderHistory } from "@/features/video/studio-sections";
+import { CostCard, videoCost } from "@/features/workspace/cost-card";
 import { ProductImages } from "@/features/workspace/product-images";
 import { nextStep, type StepState, stepStatuses, STEPS } from "@/features/workspace/steps";
 import { type SettingChoice, VideoSettings } from "@/features/workspace/video-settings";
@@ -58,12 +60,13 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
     getAiSettings(db),
     getVideoOverrides(db, storyboardId),
     aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
-    db.from("ai_requests").select("cost_thb").eq("storyboard_id", storyboardId),
+    db.from("ai_requests").select("task, cost_thb").eq("storyboard_id", storyboardId),
   ]);
   const gallery = galleryList(productMore?.gallery_urls);
 
-  // This video's AI picks, each defaulting to the Settings model for its task.
-  const choices: SettingChoice[] = VIDEO_OVERRIDE_TASKS.map((task) => {
+  // This video's AI picks, each defaulting to the Settings model for its task. The scene-prompt
+  // model stays in Settings (one less choice here).
+  const choices: SettingChoice[] = VIDEO_OVERRIDE_TASKS.filter((t) => t !== "scene_prompt").map((task) => {
     const options =
       "error" in catalog
         ? []
@@ -83,10 +86,12 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
   const ttsModel = modelFor("tts", { ...account.models, ...overrides?.models });
 
   // Spend on this video vs its cap; clips still generating count at their estimate.
-  const spent = (spentRows ?? []).reduce((n, r) => n + Number(r.cost_thb), 0);
+  const cost = videoCost(d, spentRows ?? []);
+  const spent = cost.spent.text + cost.spent.clips + cost.spent.voice;
   const inFlight = d.clipScenes.flatMap((s) => s.generations).filter((g) => g.status === "queued" || g.status === "generating");
-  const pending = inFlight.reduce((n, g) => n + g.estThb, 0);
+  const pending = cost.generating;
   const cap = account.per_video_cap_thb;
+  const level = (overrides?.visualLevel as VisualLevel | null) ?? DEFAULT_VISUAL_LEVEL;
 
   const state = {
     hasImage: !!productMore?.image_url,
@@ -150,27 +155,36 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
       )}
 
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 pb-24 lg:grid-cols-[210px_minmax(0,1fr)]">
-        <nav aria-label="ขั้นตอน" className="min-w-0 lg:sticky lg:top-4">
-          <ol className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible">
-            {STEPS.map((s, i) => {
-              const st = status[s.id];
-              const Icon = STATE_ICON[st.state].icon;
-              return (
-                <li key={s.id} className="shrink-0">
-                  <a href={`#${s.id}`} className={cn("flex items-start gap-2 rounded-md border px-3 py-2 text-[13px] hover:bg-surface-muted lg:border-transparent", next.step === s.id && "border-primary bg-primary-subtle lg:border-primary")}>
-                    <Icon className={cn("mt-0.5 size-4 shrink-0", STATE_ICON[st.state].className)} aria-label={STATE_ICON[st.state].label} />
-                    <span className="min-w-0">
-                      <span className="block font-medium">
-                        {i + 1}. {s.label}
+        <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4">
+          <nav aria-label="ขั้นตอน" className="min-w-0">
+            <ol className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible">
+              {STEPS.map((s, i) => {
+                const st = status[s.id];
+                const Icon = STATE_ICON[st.state].icon;
+                return (
+                  <li key={s.id} className="shrink-0">
+                    <a
+                      href={`#${s.id}`}
+                      className={cn(
+                        "flex items-start gap-2 rounded-md border px-3 py-2 text-[13px] hover:bg-surface-muted lg:border-transparent",
+                        next.step === s.id && "border-primary bg-primary-subtle lg:border-primary",
+                      )}
+                    >
+                      <Icon className={cn("mt-0.5 size-4 shrink-0", STATE_ICON[st.state].className)} aria-label={STATE_ICON[st.state].label} />
+                      <span className="min-w-0">
+                        <span className="block font-medium">
+                          {i + 1}. {s.label}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">{st.note}</span>
                       </span>
-                      <span className="block text-xs text-muted-foreground">{st.note}</span>
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
+                    </a>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+          <CostCard cost={cost} cap={cap} />
+        </div>
 
         <div className="flex min-w-0 flex-col gap-10">
           <section id="product" aria-labelledby="product-h" className="scroll-mt-4">
@@ -183,7 +197,15 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
                 <dt className="text-muted-foreground">ข้อมูลเมื่อ</dt>
                 <dd>{product.retrieved_at ? formatDate(product.retrieved_at) : "ไม่มีข้อมูล"}</dd>
                 <dt className="text-muted-foreground">ลิงก์ affiliate</dt>
-                <dd className="min-w-0 truncate">{product.affiliate_url ? <a href={product.affiliate_url} className="text-primary hover:underline" target="_blank" rel="noreferrer">{product.affiliate_url}</a> : "ยังไม่มี"}</dd>
+                <dd className="min-w-0 truncate">
+                  {product.affiliate_url ? (
+                    <a href={product.affiliate_url} className="text-primary hover:underline" target="_blank" rel="noreferrer">
+                      {product.affiliate_url}
+                    </a>
+                  ) : (
+                    "ยังไม่มี"
+                  )}
+                </dd>
                 <dd className="col-span-2 mt-1">
                   <Link href={`/products/${product.id}/edit`} className="text-xs text-primary hover:underline">
                     แก้ข้อมูลสินค้าอื่นๆ
@@ -200,6 +222,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
               choices={choices}
               voice={overrides?.ttsVoice ?? ""}
               voiceDefault={voiceFor(ttsModel, account.ttsVoice) ?? "ค่าของโมเดล"}
+              visualLevel={level}
               aiReady={aiReady}
             />
           </section>
@@ -217,9 +240,13 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
           </section>
 
           <section id="script" aria-labelledby="script-h" className="scroll-mt-4">
-            <SectionHeader id="script-h" title="4. สคริปต์ & ภาพต่อฉาก" description="แต่ละฉาก: บทและ claim ด้านบน ภาพของฉาก (รูปสินค้า หรือคลิป AI + โมเดล + ทรานซิชัน) ด้านล่าง · อนุมัติแล้วบทล็อก แต่ภาพยังแก้ได้" />
+            <SectionHeader
+              id="script-h"
+              title="4. สคริปต์ & ภาพต่อฉาก"
+              description="แต่ละฉาก: บทและ claim ด้านบน ภาพของฉาก (รูปสินค้า หรือคลิป AI + โมเดล + ทรานซิชัน) ด้านล่าง · อนุมัติแล้วบทล็อก แต่ภาพยังแก้ได้"
+            />
             <div className="mb-4">
-              <ClipsToolbar storyboardId={sb.id} scenes={d.clipScenes} aiReady={aiReady} approved={locked} />
+              <ClipsToolbar storyboardId={sb.id} scenes={d.clipScenes} aiReady={aiReady} approved={locked} level={VISUAL_LEVEL[level]} />
             </div>
             <StudioShell
               storyboardId={sb.id}

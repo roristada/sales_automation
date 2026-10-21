@@ -31,6 +31,29 @@ export const GENERATION_STATUS_LABEL: Record<string, string> = {
 };
 
 export const DEFAULT_CLIP_SECONDS = 5;
+
+/**
+ * How much AI footage a video gets, chosen once per video instead of per scene: the planner
+ * picks at most this many AI scenes (the opening one first, where it holds viewers).
+ */
+export const VISUAL_LEVELS = ["save", "balanced", "full"] as const;
+export type VisualLevel = (typeof VISUAL_LEVELS)[number];
+export const DEFAULT_VISUAL_LEVEL: VisualLevel = "balanced";
+export const VISUAL_LEVEL: Record<VisualLevel, { label: string; hint: string; maxAiScenes: number }> = {
+  save: { label: "ประหยัด", hint: "รูปสินค้า + motion graphics ทุกฉาก ไม่มีคลิป AI (ฟรี)", maxAiScenes: 0 },
+  balanced: { label: "สมดุล", hint: "คลิป AI 1 ฉาก — ฉากเปิดที่ดึงคนดู", maxAiScenes: 1 },
+  full: { label: "จัดเต็ม", hint: "คลิป AI 2–3 ฉากที่ AI เลือก", maxAiScenes: 3 },
+};
+
+/**
+ * At most `max` AI scenes, the opening scene first when the planner chose it, then in order;
+ * the rest become motion graphics over the product photo.
+ */
+export function capAiScenes(plans: VisualPlan[], max: number): VisualPlan[] {
+  const ai = plans.map((p, i) => (p.mode === "ai_video" ? i : -1)).filter((i) => i >= 0);
+  const keep = new Set(ai.slice(0, Math.max(0, max)));
+  return plans.map((p, i) => (p.mode === "ai_video" && !keep.has(i) ? { ...p, mode: "product_motion" as const, prompt: "" } : p));
+}
 export const MAX_PROMPT_CHARS = 2000;
 
 export interface PlanScene {
@@ -44,11 +67,11 @@ export interface PlanFact {
   value: string;
 }
 
-export function buildVisualPlanPrompt(productName: string, category: string | null, facts: PlanFact[], scenes: PlanScene[]): string {
+export function buildVisualPlanPrompt(productName: string, category: string | null, facts: PlanFact[], scenes: PlanScene[], maxAiScenes = 3): string {
   const factLines = facts.length ? facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") : "(ไม่มี)";
   const sceneLines = scenes.map((s, i) => `${i + 1}. [${s.kindLabel}] คำพูด: ${s.narration || "-"} | บนจอ: ${s.on_screen_text || "-"}`).join("\n");
   return `You plan the visuals of a short vertical (9:16) affiliate video for a Thai audience. For every scene decide:
-- mode: "ai_video" for 2–4 scenes where an AI-generated clip adds the most (product in motion, product in use); "product_motion" for the rest (motion graphics over the product photo — always use it for price and call-to-action scenes)
+- mode: "ai_video" for at most ${maxAiScenes} scene${maxAiScenes === 1 ? "" : "s"} where an AI-generated clip adds the most (product in motion, product in use) — prefer the opening scene, which has to stop viewers scrolling; "product_motion" for the rest (motion graphics over the product photo — always use it for price and call-to-action scenes)
 - video_task: "video_product" when the clip should start from the product photo and show the product itself moving (rotation, close-up, light sweep); "video_lifestyle" for a person using it or a setting
 - prompt: an English prompt for an image-to-video model, one paragraph, under 400 characters: subject, action, camera movement, lighting, background. For "product_motion" scenes give an empty string.
 

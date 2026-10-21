@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clapperboard, Sparkles, X } from "lucide-react";
+import { Check, Clapperboard, Sparkles, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import type { VideoModel } from "@/features/ai/openrouter";
 import { AI_CLIP_LABEL, clipSpec, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
 import { TRANSITION_LABEL, type TransitionChoice, TRANSITIONS } from "./timeline";
 import { sceneKey } from "./scene-key";
-import { cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
+import { autoVisuals, cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
 export interface ClipGeneration {
   id: string;
@@ -91,11 +91,27 @@ export function ClipsPanel({
 }
 
 /** "ให้ AI วางแผนภาพทุกฉาก", notices, and a refresh while clips are generating. */
-export function ClipsToolbar({ storyboardId, scenes, aiReady, approved }: { storyboardId: string; scenes: ClipScene[]; aiReady: boolean; approved: boolean }) {
+export function ClipsToolbar({
+  storyboardId,
+  scenes,
+  aiReady,
+  approved,
+  level,
+}: {
+  storyboardId: string;
+  scenes: ClipScene[];
+  aiReady: boolean;
+  approved: boolean;
+  /** The video's visual level, for the one-click button (workspace); omit to hide it. */
+  level?: { label: string; hint: string; maxAiScenes: number };
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
   const busy = scenes.some((s) => s.generations.some((g) => g.status === "queued" || g.status === "generating"));
+  const aiPlanned = scenes.filter((s) => s.plan.mode === "ai_video");
+  const missing = aiPlanned.filter((s) => !s.generations.some((g) => g.reviewStatus === "approved" || g.status === "queued" || g.status === "generating")).length;
 
   // Clips take ~30 s to several minutes: refresh while any is in flight.
   useEffect(() => {
@@ -113,13 +129,49 @@ export function ClipsToolbar({ storyboardId, scenes, aiReady, approved }: { stor
       router.refresh();
     });
 
+  const auto = (confirmed = false) =>
+    start(async () => {
+      setError(null);
+      setConfirm(null);
+      const res = await autoVisuals(storyboardId, confirmed).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      if (!res.ok) {
+        if ("needsConfirm" in res && res.needsConfirm) setConfirm(res.error);
+        else setError(res.error);
+        router.refresh();
+        return;
+      }
+      const { queued, estThb, aiScenes, skipped } = res.data;
+      toast.success(queued ? `ส่งสร้างคลิป AI ${queued} คลิป ประมาณ ฿${estThb.toFixed(2)} — ต้องเปิด npm run worker ไว้` : aiScenes ? "ทุกฉากที่เป็นคลิป AI มีคลิปแล้ว" : "จัดภาพแล้ว — ทุกฉากใช้รูปสินค้า (ฟรี)");
+      if (skipped.length) setError(skipped.join(" · "));
+      router.refresh();
+    });
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {/* Transitions are free and work without AI; only the AI buttons need the key. */}
       {!aiReady && <Notice tone="info">ยังไม่ได้ตั้งค่า AI ผ่าน OpenRouter — ใส่ OPENROUTER_API_KEY ใน .env.local เพื่อสร้างคลิป AI ต่อฉาก (ตอนนี้วิดีโอใช้ภาพสินค้า + motion graphics) · ทรานซิชันตั้งได้เลย</Notice>}
+      {level && approved && (
+        <div className="flex flex-col gap-2 rounded-lg border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[13px]">
+            <span className="font-medium">ระดับภาพ: {level.label}</span> <span className="text-muted-foreground">— {level.hint}</span>
+            {aiPlanned.length > 0 && <span className="block text-xs text-muted-foreground">คลิป AI {aiPlanned.length} ฉาก{missing ? ` · ยังไม่มีคลิป ${missing} ฉาก` : " · มีคลิปครบแล้ว"}</span>}
+          </p>
+          <Button type="button" onClick={() => auto()} disabled={pending || busy || (aiPlanned.length > 0 && !missing)} className="shrink-0">
+            <Wand2 aria-hidden /> {pending ? "กำลังจัดภาพ…" : busy ? "กำลังสร้างคลิป…" : aiPlanned.length && !missing ? "จัดภาพครบแล้ว" : "จัดภาพให้อัตโนมัติ"}
+          </Button>
+        </div>
+      )}
+      {confirm && (
+        <Notice tone="warning">
+          {confirm}{" "}
+          <Button size="sm" variant="outline" onClick={() => auto(true)} disabled={pending}>
+            ยืนยันและสร้าง
+          </Button>
+        </Notice>
+      )}
       <div className={aiReady ? "flex flex-wrap items-center gap-3" : "hidden"}>
-        <Button type="button" variant="outline" onClick={plan} disabled={pending}>
-          <Sparkles aria-hidden /> {pending ? "AI กำลังวางแผน…" : "ให้ AI วางแผนภาพทุกฉาก"}
+        <Button type="button" variant={level ? "ghost" : "outline"} size={level ? "sm" : "default"} onClick={plan} disabled={pending}>
+          <Sparkles aria-hidden /> {pending ? "AI กำลังวางแผน…" : level ? "วางแผนภาพใหม่ทั้งหมด" : "ให้ AI วางแผนภาพทุกฉาก"}
         </Button>
         <p className="text-xs text-muted-foreground">AI เลือกว่าฉากไหนควรเป็นคลิป AI และเขียน prompt ภาษาอังกฤษจากข้อเท็จจริงที่ยืนยันแล้ว (ไม่ถึง ฿0.10) — แก้เองได้ทุกฉาก</p>
       </div>
@@ -166,6 +218,17 @@ export function SceneVisual({
   const spec = v.mode === "ai_video" && info ? clipSpec(info, v.duration_s, v.video_task === "video_product" && hasFrame) : null;
   const est = spec ? { model: modelId, seconds: spec.duration, thb: Math.round(spec.estUsd * usdThb * 100) / 100, priced: spec.priced } : null;
   const id = (k: string) => `clip-${scene.id}-${k}`;
+  const [open, setOpen] = useState(false);
+  // Why "สร้างคลิป AI" can't be pressed yet (the button stays visible so it can be found).
+  const genBlock = !approved
+    ? "อนุมัติสคริปต์ก่อน จึงจะสร้างคลิปได้"
+    : dirty
+      ? "กด “บันทึกแผนภาพ” ก่อน แล้วค่อยสร้างคลิป"
+      : !scene.plan.prompt.trim()
+        ? "ยังไม่มี prompt — กด “จัดภาพให้อัตโนมัติ” หรือใส่ใน “ปรับเอง”"
+        : !est
+          ? "เลือกโมเดลวิดีโอใน “ปรับเอง”"
+          : null;
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>, done?: string) =>
     start(async () => {
@@ -201,6 +264,48 @@ export function SceneVisual({
       </div>
       <div className="flex flex-col gap-3 p-4 text-[13px]">
         {!embedded && <p className="line-clamp-2 text-muted-foreground">“{scene.narration || "—"}”</p>}
+        {/* What this scene shows and its main action, always visible. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1">
+            {v.mode === "ai_video" ? (
+              <>
+                <span className="font-medium">คลิป AI</span>
+                <span className="text-muted-foreground">{est ? ` · ${est.model} · ${est.seconds} วิ · ประมาณ ${thb(est.thb)}${est.priced ? "" : " (ราคาตาม token — ประมาณแบบเผื่อ)"}` : " · ไม่พบโมเดลใน catalog — เลือกรุ่นอื่นใน “ปรับเอง”"}</span>
+              </>
+            ) : (
+              <span className="font-medium">รูปสินค้า + motion graphics (ฟรี)</span>
+            )}
+            {scene.n > 1 && <span className="text-muted-foreground"> · เข้าฉาก: {TRANSITION_LABEL[v.transition]}</span>}
+          </p>
+          {v.mode === "ai_video" ? (
+            inFlight ? (
+              <>
+                <Chip tone="info">{GENERATION_STATUS_LABEL[latest.status]}</Chip>
+                <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => act(() => cancelSceneClip(latest.id), "ยกเลิกแล้ว")}>
+                  ยกเลิก
+                </Button>
+              </>
+            ) : (
+              <Button type="button" size="sm" disabled={pending || !!genBlock} onClick={() => generate()}>
+                <Clapperboard aria-hidden /> {scene.generations.length ? "สร้างใหม่เฉพาะฉากนี้" : "สร้างคลิป AI"}
+              </Button>
+            )
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setV({ ...v, mode: "ai_video" });
+                setOpen(true);
+              }}
+            >
+              ใช้คลิป AI ในฉากนี้
+            </Button>
+          )}
+        </div>
+        {v.mode === "ai_video" && !inFlight && genBlock && <p className="text-xs text-warning">{genBlock}</p>}
+        <Advanced embedded={embedded} open={open || dirty} onToggle={setOpen}>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={id("mode")}>ภาพของฉากนี้</Label>
@@ -266,29 +371,15 @@ export function SceneVisual({
                 <Label htmlFor={id("dur")}>ความยาว (วินาที)</Label>
                 <Input id={id("dur")} type="number" min={1} max={20} className="w-24" value={v.duration_s} onChange={(e) => setV({ ...v, duration_s: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })} />
               </div>
-              <p className="pb-2 text-xs text-muted-foreground">
-                {est ? `${est.model} · ${est.seconds} วิ · ประมาณ ${thb(est.thb)}${est.priced ? "" : " (ราคาตาม token — ประมาณแบบเผื่อ)"}${dirty ? " — บันทึกแผนภาพก่อนกดสร้าง" : ""}` : "ไม่พบโมเดลใน catalog — เลือกรุ่นอื่น"}
-              </p>
             </div>
           </>
         )}
-        <div className="flex flex-wrap gap-2">
           {dirty && (
-            <Button type="button" size="sm" disabled={pending} onClick={() => act(() => saveScenePlan(scene.id, v), "บันทึกแผนภาพแล้ว")}>
+            <Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => act(() => saveScenePlan(scene.id, v), "บันทึกแผนภาพแล้ว")}>
               บันทึกแผนภาพ
             </Button>
           )}
-          {v.mode === "ai_video" && !dirty && approved && !inFlight && (
-            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => generate()}>
-              <Clapperboard aria-hidden /> {scene.generations.length ? "สร้างใหม่เฉพาะฉากนี้" : "สร้างคลิป AI"}
-            </Button>
-          )}
-          {inFlight && (
-            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => act(() => cancelSceneClip(latest.id), "ยกเลิกแล้ว")}>
-              ยกเลิก
-            </Button>
-          )}
-        </div>
+        </Advanced>
         {v.mode === "ai_video" && !dirty && approved && !inFlight && reusable.length > 0 && (
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex min-w-0 flex-col gap-1.5">
@@ -359,6 +450,17 @@ export function SceneVisual({
         )}
       </div>
     </Wrapper>
+  );
+}
+
+/** The detailed controls: behind "ปรับเอง" under a script card, always open in Video Studio. */
+function Advanced({ embedded, open, onToggle, children }: { embedded: boolean; open: boolean; onToggle: (open: boolean) => void; children: React.ReactNode }) {
+  if (!embedded) return <div className="flex flex-col gap-3">{children}</div>;
+  return (
+    <details open={open} onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)} className="group rounded-md border bg-surface">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-primary">ปรับเอง (โหมดภาพ โมเดล prompt ความยาว ทรานซิชัน)</summary>
+      <div className="flex flex-col gap-3 border-t p-3">{children}</div>
+    </details>
   );
 }
 

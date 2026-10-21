@@ -8,7 +8,9 @@ import { Notice } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VISUAL_LEVEL, type VisualLevel, VISUAL_LEVELS } from "@/features/ai/clips";
 import { saveVideoSettings } from "@/features/content/workspace-actions";
+import { cn } from "@/lib/utils";
 
 export interface SettingChoice {
   task: string;
@@ -21,18 +23,33 @@ export interface SettingChoice {
 }
 
 /** This video's AI picks over the Settings defaults (all its script versions). */
-export function VideoSettings({ projectId, choices, voice, voiceDefault, aiReady }: { projectId: string; choices: SettingChoice[]; voice: string; voiceDefault: string; aiReady: boolean }) {
+export function VideoSettings({
+  projectId,
+  choices,
+  voice,
+  voiceDefault,
+  visualLevel,
+  aiReady,
+}: {
+  projectId: string;
+  choices: SettingChoice[];
+  voice: string;
+  voiceDefault: string;
+  visualLevel: VisualLevel;
+  aiReady: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState(() => Object.fromEntries(choices.map((c) => [c.task, c.value])) as Record<string, string>);
   const [voiceName, setVoiceName] = useState(voice);
-  const dirty = choices.some((c) => values[c.task] !== c.value) || voiceName !== voice;
+  const [level, setLevel] = useState<VisualLevel>(visualLevel);
+  const dirty = choices.some((c) => values[c.task] !== c.value) || voiceName !== voice || level !== visualLevel;
 
   const save = () =>
     start(async () => {
       setError(null);
-      const res = await saveVideoSettings(projectId, { models: values, ttsVoice: voiceName }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      const res = await saveVideoSettings(projectId, { models: values, ttsVoice: voiceName, visualLevel: level }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
       if (!res.ok) return setError(res.error);
       toast.success("บันทึกการตั้งค่าของวิดีโอนี้แล้ว");
       router.refresh();
@@ -42,6 +59,20 @@ export function VideoSettings({ projectId, choices, voice, voiceDefault, aiReady
   return (
     <div className="flex flex-col gap-3">
       {error && <Notice tone="error">{error}</Notice>}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-[13px] font-medium">ระดับภาพ (คลิป AI)</legend>
+        <div role="radiogroup" aria-label="ระดับภาพ" className="grid gap-2 sm:grid-cols-3">
+          {VISUAL_LEVELS.map((l) => (
+            <label key={l} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border bg-surface px-3 py-2 text-[13px]", level === l && "border-primary bg-primary-subtle")}>
+              <input type="radio" name="visual_level" value={l} checked={level === l} onChange={() => setLevel(l)} className="mt-1 accent-primary" />
+              <span>
+                <span className="block font-medium">{VISUAL_LEVEL[l].label}</span>
+                <span className="block text-xs text-muted-foreground">{VISUAL_LEVEL[l].hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {choices.map((c) => (
           <div key={c.task} className="flex min-w-0 flex-col gap-1.5 text-[13px]">

@@ -75,11 +75,17 @@ const VOICE_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
 export interface AiOverrides {
   models: Partial<Record<AiTask, string>>;
   ttsVoice: string | null;
+  /** "save" | "balanced" | "full" (src/features/ai/clips.ts VISUAL_LEVELS); null = default. */
+  visualLevel: string | null;
 }
 
 export function parseAiOverrides(value: unknown): AiOverrides {
   const v = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  return { models: parseModelPicks(v.models), ttsVoice: typeof v.tts_voice === "string" && VOICE_ID.test(v.tts_voice) ? v.tts_voice : null };
+  return {
+    models: parseModelPicks(v.models),
+    ttsVoice: typeof v.tts_voice === "string" && VOICE_ID.test(v.tts_voice) ? v.tts_voice : null,
+    visualLevel: typeof v.visual_level === "string" && ["save", "balanced", "full"].includes(v.visual_level) ? v.visual_level : null,
+  };
 }
 
 export function modelFor(task: AiTask, picks: Partial<Record<AiTask, string>>): string {
