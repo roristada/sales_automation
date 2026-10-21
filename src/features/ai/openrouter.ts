@@ -148,6 +148,11 @@ export interface VideoModel {
   durations: number[];
   frameImages: string[];
   resolutions: string[];
+  /**
+   * Catalog `generate_audio`: true = audio can be switched off, false = the model always renders
+   * audio and refuses the flag (HeyGen), null = not stated.
+   */
+  audioToggle: boolean | null;
   /** As listed by OpenRouter; units differ per model (see videoPricePerSecond). */
   pricing: Record<string, string>;
 }
@@ -168,6 +173,7 @@ interface RawVideoModel {
   supported_durations?: number[] | null;
   supported_frame_images?: string[] | null;
   supported_resolutions?: string[] | null;
+  generate_audio?: boolean | null;
   pricing_skus?: Record<string, string> | null;
 }
 
@@ -197,6 +203,7 @@ export async function listVideoModels(opts?: Pick<RequestOptions, "fetchImpl">):
     durations: m.supported_durations ?? [],
     frameImages: m.supported_frame_images ?? [],
     resolutions: m.supported_resolutions ?? [],
+    audioToggle: typeof m.generate_audio === "boolean" ? m.generate_audio : null,
     pricing: m.pricing_skus ?? {},
   }));
 }
@@ -286,6 +293,8 @@ export interface VideoInput {
   resolution: string;
   /** Product photo used as the first frame (image-to-video). */
   firstFrameUrl?: string | null;
+  /** Ask for no audio (cheaper; the render mutes clips anyway). Off for models that refuse the flag. */
+  noAudio?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -317,7 +326,7 @@ const toJob = (r: RawVideoJob): VideoJob => ({
 
 /**
  * `POST /videos` — submits a job (202 + id). Never retried: a duplicate submit is a second bill.
- * Audio is off: narration and music are added in Remotion.
+ * Audio is off where the model allows it: narration and music are added in Remotion.
  */
 export async function submitVideo(input: VideoInput): Promise<VideoJob> {
   const body: Record<string, unknown> = {
@@ -326,8 +335,8 @@ export async function submitVideo(input: VideoInput): Promise<VideoJob> {
     duration: input.duration,
     aspect_ratio: input.aspectRatio,
     resolution: input.resolution,
-    generate_audio: false,
   };
+  if (input.noAudio ?? true) body.generate_audio = false;
   if (input.firstFrameUrl) body.frame_images = [{ type: "image_url", image_url: { url: input.firstFrameUrl }, frame_type: "first_frame" }];
   return toJob(await request<RawVideoJob>("/videos", { method: "POST", body, retry: false, timeoutMs: 60_000, fetchImpl: input.fetchImpl }));
 }

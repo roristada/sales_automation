@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { usdToThb } from "@/features/ai/models";
-import { downloadVideo, getVideoJob, isOpenRouterConfigured, OpenRouterError, submitVideo } from "@/features/ai/openrouter";
+import { downloadVideo, getVideoJob, isOpenRouterConfigured, listVideoModels, OpenRouterError, submitVideo, type VideoModel } from "@/features/ai/openrouter";
 import { runFfprobe } from "@/features/video/ffprobe";
 import { checkClipShape, portraitFrame } from "@/features/video/frame";
 import { fetchPublic } from "@/features/video/safe-fetch";
@@ -55,6 +55,19 @@ async function finish(db: Db, id: string, patch: Database["public"]["Tables"]["s
 
 const MAX_FRAME_BYTES = 10 * 1024 * 1024;
 
+// The public video catalog, kept for 10 minutes: what each model accepts.
+let catalog: { at: number; models: VideoModel[] } | null = null;
+async function videoModel(id: string): Promise<VideoModel | undefined> {
+  if (!catalog || Date.now() - catalog.at > 600_000) {
+    try {
+      catalog = { at: Date.now(), models: await listVideoModels() };
+    } catch {
+      return catalog?.models.find((m) => m.id === id);
+    }
+  }
+  return catalog.models.find((m) => m.id === id);
+}
+
 /**
  * The first frame as sent: the product photo fitted onto 9:16 (models keep the first frame's
  * shape), as a data: URL. The photo URL is user-supplied, so it's fetched with the SSRF guard.
@@ -75,7 +88,9 @@ async function firstFrame(url: string | null, log: Log, id: string): Promise<str
 async function submit(db: Db, g: Generation, log: Log) {
   try {
     const frame = await firstFrame(g.first_frame_url, log, g.id);
-    const job = await submitVideo({ model: g.model, prompt: g.prompt, duration: g.duration_s, aspectRatio: "9:16", resolution: g.resolution, firstFrameUrl: frame });
+    // Some models always render audio and refuse "no audio" (HeyGen): don't send it to them.
+    const info = await videoModel(g.model);
+    const job = await submitVideo({ model: g.model, prompt: g.prompt, duration: g.duration_s, aspectRatio: "9:16", resolution: g.resolution, firstFrameUrl: frame, noAudio: info?.audioToggle !== false });
     await db
       .from("scene_generations")
       .update({ status: "generating", openrouter_job_id: job.id, submitted_at: new Date().toISOString(), polled_at: new Date().toISOString(), locked_by: null, locked_at: null })

@@ -58,6 +58,10 @@ describe("video client", () => {
     const ok = vi.fn<typeof fetch>(async () => json({ id: "job-1", status: "pending" }, 202));
     expect(await submitVideo({ model: "m/v", prompt: "p", duration: 5, aspectRatio: "9:16", resolution: "720p", firstFrameUrl: "https://x/p.jpg", fetchImpl: ok })).toMatchObject({ id: "job-1", status: "pending" });
     expect(JSON.parse(ok.mock.calls[0][1]!.body as string)).toMatchObject({ generate_audio: false, aspect_ratio: "9:16", frame_images: [{ frame_type: "first_frame", image_url: { url: "https://x/p.jpg" } }] });
+    // Models that always render audio (HeyGen) refuse the flag: it isn't sent to them.
+    const heygen = vi.fn<typeof fetch>(async () => json({ id: "job-2", status: "pending" }, 202));
+    await submitVideo({ model: "heygen/heygen-video-1", prompt: "p", duration: 5, aspectRatio: "9:16", resolution: "768p", noAudio: false, fetchImpl: heygen });
+    expect(JSON.parse(heygen.mock.calls[0][1]!.body as string)).not.toHaveProperty("generate_audio");
     const bad = vi.fn<typeof fetch>(async () => json({ error: { message: "x" } }, 503));
     await expect(submitVideo({ model: "m/v", prompt: "p", duration: 5, aspectRatio: "9:16", resolution: "720p", fetchImpl: bad })).rejects.toThrow();
     expect(bad).toHaveBeenCalledTimes(1);

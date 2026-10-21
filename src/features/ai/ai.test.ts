@@ -88,7 +88,7 @@ describe("model picks", () => {
     expect(textModelsFor("script", text).map((m) => m.id)).toEqual(["a/text", "a/vision", "a/video"]);
     expect(textModelsFor("extract", text).map((m) => m.id)).toEqual(["a/vision", "a/video"]);
     expect(textModelsFor("review", text).map((m) => m.id)).toEqual(["a/video"]);
-    const v = (id: string, aspectRatios: string[], frameImages: string[]): VideoModel => ({ id, name: id, aspectRatios, durations: [5], frameImages, resolutions: [], pricing: {} });
+    const v = (id: string, aspectRatios: string[], frameImages: string[]): VideoModel => ({ id, name: id, aspectRatios, durations: [5], frameImages, resolutions: [], audioToggle: true, pricing: {} });
     const video = [v("v/wide", ["16:9"], ["first_frame"]), v("v/t2v", ["9:16"], []), v("v/i2v", ["9:16"], ["first_frame"])];
     expect(videoModelsFor("video_product", video).map((m) => m.id)).toEqual(["v/i2v"]);
     expect(videoModelsFor("video_lifestyle", video).map((m) => m.id)).toEqual(["v/t2v", "v/i2v"]);
