@@ -72,7 +72,8 @@ export function buildVisualPlanPrompt(productName: string, category: string | nu
   const sceneLines = scenes.map((s, i) => `${i + 1}. [${s.kindLabel}] คำพูด: ${s.narration || "-"} | บนจอ: ${s.on_screen_text || "-"}`).join("\n");
   return `You plan the visuals of a short vertical (9:16) affiliate video for a Thai audience. For every scene decide:
 - mode: "ai_video" for at most ${maxAiScenes} scene${maxAiScenes === 1 ? "" : "s"} where an AI-generated clip adds the most (product in motion, product in use) — prefer the opening scene, which has to stop viewers scrolling; "product_motion" for the rest (motion graphics over the product photo — always use it for price and call-to-action scenes)
-- video_task: "video_product" when the clip should start from the product photo and show the product itself moving (rotation, close-up, light sweep); "video_lifestyle" for a person using it or a setting
+- video_task: "video_product" when the clip should start from the product photo and show the product itself moving (rotation, close-up, light sweep) — always for a scene about a part, a spec, a material or a detail of the product, since only the photo shows the real thing; "video_lifestyle" only for a scene about using it (a person using it, a setting), where the product itself needn't be seen closely
+- For a person using the product, name its exact type and what it is NOT (e.g. "small in-ear earphones … no over-ear headphones"), so the model doesn't draw a different kind of product
 - prompt: an English prompt for an image-to-video model, one paragraph, under 400 characters: subject, action, camera movement, lighting, background. For "product_motion" scenes give an empty string.
 
 Rules:
