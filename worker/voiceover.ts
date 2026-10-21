@@ -82,7 +82,7 @@ export async function prepareVoiceover(
         throw new VoiceoverError(`เสียงพากย์ฉากที่ ${s.position + 1}: ${(e as Error).message}`, false);
       }
       await writeFile(file, mp3);
-      const seconds = probeFacts(await runFfprobe(file)).durationS;
+      const seconds = probeFacts(await runFfprobe(file, { format: "mp3" })).durationS;
       calls.push({ generationId: result.generationId, chars: text.length, seconds: seconds ?? 0 });
       if (!seconds || seconds <= 0) throw new VoiceoverError(`ไฟล์เสียงฉากที่ ${s.position + 1} อ่านความยาวไม่ได้`, true);
 

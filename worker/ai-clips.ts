@@ -99,7 +99,7 @@ async function storeClip(db: Db, storage: StorageAdapter, g: Generation, bytes: 
   try {
     const file = path.join(tmp, "clip.mp4");
     await writeFile(file, bytes);
-    const facts = probeFacts(await runFfprobe(file));
+    const facts = probeFacts(await runFfprobe(file, { format: "mov" }));
     if (!facts.videoCodec) throw new Error("ไฟล์ที่ได้ไม่ใช่วิดีโอที่อ่านได้");
     const shape = await checkClipShape(file, facts);
     const { data: sb } = await db.from("storyboards").select("project:content_projects(product_id)").eq("id", g.storyboard_id).maybeSingle();

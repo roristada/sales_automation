@@ -25,6 +25,23 @@ function run(args: string[]): Promise<Buffer> {
   });
 }
 
+/**
+ * The photo comes from a user-supplied URL, so ffmpeg must never guess its format: a "photo"
+ * that is really a playlist (HLS, concat) would make ffmpeg open other files or URLs. The
+ * format is taken from the magic bytes and forced, and only the file protocol is allowed.
+ */
+export type ImageDemuxer = "jpeg_pipe" | "png_pipe" | "webp_pipe";
+
+export function imageDemuxer(b: Buffer): ImageDemuxer {
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg_pipe";
+  if (b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png_pipe";
+  if (b.length > 12 && b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP") return "webp_pipe";
+  throw new Error("ไฟล์รูปสินค้าไม่ใช่ JPG, PNG หรือ WebP");
+}
+
+/** `-i` for a local file in a known format, with nothing but the file protocol allowed. */
+const input = (file: string, format: string) => ["-protocol_whitelist", "file", "-f", format, "-i", file];
+
 /** "0xRRGGBB" from three bytes. */
 export const hexColor = (rgb: ArrayLike<number>) => `0x${[rgb[0], rgb[1], rgb[2]].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 
@@ -32,17 +49,17 @@ type Corner = "tl" | "tr" | "bl" | "br";
 const CORNER_AT: Record<Corner, [string, string]> = { tl: ["0", "0"], tr: ["iw-iw/16", "0"], bl: ["0", "ih-ih/16"], br: ["iw-iw/16", "ih-ih/16"] };
 
 /** Average colour of two corner patches, e.g. the top two for the band above the photo. */
-async function cornersColor(file: string, corners: [Corner, Corner]): Promise<string> {
-  const patch = ([x, y]: [string, string]) => run(["-i", file, "-vf", `crop=iw/16:ih/16:${x}:${y},scale=1:1`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+async function cornersColor(file: string, format: ImageDemuxer, corners: [Corner, Corner]): Promise<string> {
+  const patch = ([x, y]: [string, string]) => run([...input(file, format), "-vf", `crop=iw/16:ih/16:${x}:${y},scale=1:1`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
   const [a, b] = await Promise.all(corners.map((c) => patch(CORNER_AT[c])));
   if (a.length < 3 || b.length < 3) return "0xffffff";
   return hexColor([0, 1, 2].map((i) => Math.round((a[i] + b[i]) / 2)));
 }
 
 /** The photo's size, from ffmpeg's own report (ffprobe isn't needed for one still). */
-async function imageSize(file: string): Promise<{ width: number; height: number }> {
+async function imageSize(file: string, format: ImageDemuxer): Promise<{ width: number; height: number }> {
   const log = await new Promise<string>((resolve) => {
-    const p = spawn(FFMPEG(), ["-hide_banner", "-i", file]);
+    const p = spawn(FFMPEG(), ["-hide_banner", ...input(file, format)]);
     let err = "";
     p.stderr.on("data", (d) => (err += d));
     p.on("error", () => resolve(""));
@@ -58,13 +75,14 @@ async function imageSize(file: string): Promise<{ width: number; height: number 
  * colour of the photo's corners next to it, so a white-top, grey-bottom shot stays seamless.
  */
 export async function portraitFrame(image: Buffer): Promise<Buffer> {
+  const format = imageDemuxer(image);
   const dir = await mkdtemp(path.join(os.tmpdir(), "frame-"));
   try {
     const src = path.join(dir, "src");
     const out = path.join(dir, "frame.jpg");
     await writeFile(src, image);
     const { width: w, height: h } = FRAME;
-    const size = await imageSize(src);
+    const size = await imageSize(src, format);
     const scale = Math.min(w / size.width, h / size.height);
     const sw = Math.round((size.width * scale) / 2) * 2;
     const sh = Math.round((size.height * scale) / 2) * 2;
@@ -72,9 +90,9 @@ export async function portraitFrame(image: Buffer): Promise<Buffer> {
     const y = (h - sh) / 2;
     // Wide or square photo → bands above and below; tall photo → bands left and right.
     const vertical = sh < h;
-    const [first, second] = await Promise.all(vertical ? [cornersColor(src, ["tl", "tr"]), cornersColor(src, ["bl", "br"])] : [cornersColor(src, ["tl", "bl"]), cornersColor(src, ["tr", "br"])]);
+    const [first, second] = await Promise.all(vertical ? [cornersColor(src, format, ["tl", "tr"]), cornersColor(src, format, ["bl", "br"])] : [cornersColor(src, format, ["tl", "bl"]), cornersColor(src, format, ["tr", "br"])]);
     const band = vertical ? `drawbox=x=0:y=${y + sh}:w=${w}:h=${h - y - sh}:color=${second}:t=fill` : `drawbox=x=${x + sw}:y=0:w=${w - x - sw}:h=${h}:color=${second}:t=fill`;
-    await run(["-i", src, "-vf", `scale=${sw}:${sh},pad=${w}:${h}:${x}:${y}:color=${first},${band},format=yuvj420p`, "-frames:v", "1", "-q:v", "2", "-y", out]);
+    await run([...input(src, format), "-vf", `scale=${sw}:${sh},pad=${w}:${h}:${x}:${y}:color=${first},${band},format=yuvj420p`, "-frames:v", "1", "-q:v", "2", "-y", out]);
     return await readFile(out);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -96,7 +114,8 @@ export async function checkClipShape(file: string, size: { width: number | null;
   if (size.width && size.height && Math.abs(size.width / size.height - 9 / 16) > 0.02) notes.push(`คลิปไม่ใช่แนวตั้ง 9:16 (${size.width}×${size.height}) — ตอน render จะถูกครอปขอบ`);
   try {
     const log = await new Promise<string>((resolve, reject) => {
-      const p = spawn(FFMPEG(), ["-hide_banner", "-i", file, "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
+      // The clip is the MP4 downloaded from OpenRouter: read as MP4 only.
+      const p = spawn(FFMPEG(), ["-hide_banner", ...input(file, "mov"), "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
       let err = "";
       p.stderr.on("data", (d) => (err += d));
       p.on("error", reject);

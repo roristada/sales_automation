@@ -267,7 +267,7 @@ async function loadTts(job: Tables<"render_jobs">, requested: Json | undefined) 
 
 async function ffprobe(file: string): Promise<unknown> {
   try {
-    return await runFfprobe(file);
+    return await runFfprobe(file, { format: "mov" });
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "FFPROBE_FAILED") throw new RenderError("ffprobe_failed", `ffprobe ล้มเหลว: ${(e as Error).message}`);

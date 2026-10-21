@@ -88,7 +88,7 @@ export async function POST(request: Request) {
 
     let facts: ReturnType<typeof probeFacts> | null = null;
     try {
-      facts = probeFacts(await runFfprobe(tmpFile));
+      facts = probeFacts(await runFfprobe(tmpFile, { format: type.demuxer }));
     } catch {
       // ffprobe missing or unreadable file: keep the asset without dimensions.
     }
