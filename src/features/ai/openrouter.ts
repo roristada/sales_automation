@@ -5,7 +5,8 @@
  * raw response body).
  */
 
-const BASE = "https://openrouter.ai/api/v1";
+/** Overridable only so tests can point the worker at a local fake server. */
+const base = () => process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const RETRY_DELAYS_MS = [1_000, 3_000];
 
@@ -60,10 +61,12 @@ interface RequestOptions {
   timeoutMs?: number;
   /** Retry on 408/429/5xx and network errors. Off for calls that may be billed twice. */
   retry?: boolean;
+  /** Off where `error` is part of a normal payload (a failed video job). */
+  inBodyErrors?: boolean;
   fetchImpl?: typeof fetch;
 }
 
-async function request<T>(path: string, { method = "GET", body, auth = true, timeoutMs = DEFAULT_TIMEOUT_MS, retry = true, fetchImpl = fetch }: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, { method = "GET", body, auth = true, timeoutMs = DEFAULT_TIMEOUT_MS, retry = true, inBodyErrors = true, fetchImpl = fetch }: RequestOptions = {}): Promise<T> {
   const key = openRouterKey();
   if (auth && !key) throw new OpenRouterError("ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local");
   const headers: Record<string, string> = { "X-Title": "Sales Automation" };
@@ -73,7 +76,7 @@ async function request<T>(path: string, { method = "GET", body, auth = true, tim
   for (let attempt = 0; ; attempt++) {
     let error: OpenRouterError;
     try {
-      const res = await fetchImpl(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetchImpl(base() + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
       const text = await res.text();
       let json: unknown = null;
       try {
@@ -82,7 +85,7 @@ async function request<T>(path: string, { method = "GET", body, auth = true, tim
         // Non-JSON body (e.g. an HTML error page): fall through to the status check.
       }
       // OpenRouter can also report a failure inside a 200 body.
-      const apiError = (json as { error?: { code?: number; message?: string } } | null)?.error;
+      const apiError = inBodyErrors || !res.ok ? (json as { error?: { code?: number; message?: string } } | null)?.error : undefined;
       if (res.ok && !apiError) {
         if (json === null) throw new OpenRouterError("OpenRouter ตอบกลับไม่ใช่ JSON");
         return json as T;
@@ -144,6 +147,7 @@ export interface VideoModel {
   aspectRatios: string[];
   durations: number[];
   frameImages: string[];
+  resolutions: string[];
   /** As listed by OpenRouter; units differ per model (see videoPricePerSecond). */
   pricing: Record<string, string>;
 }
@@ -163,6 +167,7 @@ interface RawVideoModel {
   supported_aspect_ratios?: string[] | null;
   supported_durations?: number[] | null;
   supported_frame_images?: string[] | null;
+  supported_resolutions?: string[] | null;
   pricing_skus?: Record<string, string> | null;
 }
 
@@ -191,6 +196,7 @@ export async function listVideoModels(opts?: Pick<RequestOptions, "fetchImpl">):
     aspectRatios: m.supported_aspect_ratios ?? [],
     durations: m.supported_durations ?? [],
     frameImages: m.supported_frame_images ?? [],
+    resolutions: m.supported_resolutions ?? [],
     pricing: m.pricing_skus ?? {},
   }));
 }
@@ -266,4 +272,95 @@ export async function chat(input: ChatInput): Promise<ChatResult> {
     costUsd: Number(raw.usage?.cost ?? 0),
     finishReason: choice?.finish_reason ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Video generation (async jobs)
+// ---------------------------------------------------------------------------
+
+export interface VideoInput {
+  model: string;
+  prompt: string;
+  duration: number;
+  aspectRatio: "9:16";
+  resolution: string;
+  /** Product photo used as the first frame (image-to-video). */
+  firstFrameUrl?: string | null;
+  fetchImpl?: typeof fetch;
+}
+
+export type VideoJobStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface VideoJob {
+  id: string;
+  status: VideoJobStatus;
+  generationId: string | null;
+  costUsd: number | null;
+  error: string | null;
+}
+
+interface RawVideoJob {
+  id: string;
+  status: VideoJobStatus;
+  generation_id?: string | null;
+  usage?: { cost?: number | null } | null;
+  error?: string | { message?: string } | null;
+}
+
+const toJob = (r: RawVideoJob): VideoJob => ({
+  id: r.id,
+  status: r.status,
+  generationId: r.generation_id ?? null,
+  costUsd: r.usage?.cost ?? null,
+  error: typeof r.error === "string" ? r.error : (r.error?.message ?? null),
+});
+
+/**
+ * `POST /videos` — submits a job (202 + id). Never retried: a duplicate submit is a second bill.
+ * Audio is off: narration and music are added in Remotion.
+ */
+export async function submitVideo(input: VideoInput): Promise<VideoJob> {
+  const body: Record<string, unknown> = {
+    model: input.model,
+    prompt: input.prompt,
+    duration: input.duration,
+    aspect_ratio: input.aspectRatio,
+    resolution: input.resolution,
+    generate_audio: false,
+  };
+  if (input.firstFrameUrl) body.frame_images = [{ type: "image_url", image_url: { url: input.firstFrameUrl }, frame_type: "first_frame" }];
+  return toJob(await request<RawVideoJob>("/videos", { method: "POST", body, retry: false, timeoutMs: 60_000, fetchImpl: input.fetchImpl }));
+}
+
+/** `GET /videos/{id}` — job status; `usage.cost` once completed. */
+export async function getVideoJob(id: string, opts?: Pick<RequestOptions, "fetchImpl">): Promise<VideoJob> {
+  if (!/^[\w-]{1,200}$/.test(id)) throw new OpenRouterError("รหัสงานวิดีโอไม่ถูกต้อง");
+  return toJob(await request<RawVideoJob>(`/videos/${id}`, { ...opts, timeoutMs: 20_000, inBodyErrors: false }));
+}
+
+/** `GET /videos/{id}/content?index=0` — the finished MP4 (needs the key). */
+export async function downloadVideo(id: string, opts?: { fetchImpl?: typeof fetch; maxBytes?: number }): Promise<Buffer> {
+  if (!/^[\w-]{1,200}$/.test(id)) throw new OpenRouterError("รหัสงานวิดีโอไม่ถูกต้อง");
+  const key = openRouterKey();
+  if (!key) throw new OpenRouterError("ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local");
+  const res = await (opts?.fetchImpl ?? fetch)(`${base()}/videos/${id}/content?index=0`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(180_000) });
+  if (!res.ok) throw new OpenRouterError(errorMessage(res.status), res.status, isRetryable(res.status));
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > (opts?.maxBytes ?? 200 * 1024 * 1024)) throw new OpenRouterError("ไฟล์วิดีโอใหญ่เกินกำหนด");
+  return buf;
+}
+
+/** The supported duration closest to what the scene wants (models accept only listed values). */
+export function nearestDuration(wanted: number, supported: number[]): number {
+  if (!supported.length) return wanted;
+  return supported.reduce((best, d) => (Math.abs(d - wanted) < Math.abs(best - wanted) || (Math.abs(d - wanted) === Math.abs(best - wanted) && d < best) ? d : best));
+}
+
+/** USD for one clip from catalog prices (per second + per input image); null when priced by token. */
+export function estimateVideoUsd(pricing: Record<string, string>, seconds: number, withImage: boolean): number | null {
+  const perSecond = videoPricePerSecond(pricing);
+  if (perSecond === null) return null;
+  const imageKey = Object.keys(pricing).find((k) => /image_input/.test(k));
+  const image = withImage && imageKey ? Number(pricing[imageKey]) / (imageKey.startsWith("cents_") ? 100 : 1) : 0;
+  return perSecond * seconds + (Number.isFinite(image) ? image : 0);
 }

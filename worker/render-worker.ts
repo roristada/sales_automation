@@ -24,6 +24,7 @@ import { probeFacts, type QaCheck, qaReport } from "@/features/video/qa";
 import { getStorage } from "@/features/video/storage";
 import { buildTimeline, RENDERER_VERSION, type SceneMedia, toSrt, toVtt, VIDEO, type VideoProps } from "@/features/video/timeline";
 import type { Database, Json, Tables } from "@/lib/supabase/database.types";
+import { tickAiClips } from "./ai-clips";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -423,6 +424,7 @@ async function main() {
   log(null, `render worker ${WORKER_ID} เริ่มทำงาน`);
   await startHeartbeat();
   while (!stopping) {
+    await tickAiClips(db, storage, WORKER_ID, log);
     await db.rpc("fail_exhausted_render_jobs");
     const { data, error } = await db.rpc("claim_render_job", { worker: WORKER_ID });
     if (error) log(null, `ดึงงานไม่สำเร็จ: ${error.message}`);

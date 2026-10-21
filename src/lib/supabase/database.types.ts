@@ -9,15 +9,7 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json;
-          operationName?: string;
-          query?: string;
-          variables?: Json;
-        };
-        Returns: Json;
-      };
+      graphql: { Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json }; Returns: Json };
     };
     Enums: {
       [_ in never]: never;
@@ -1098,6 +1090,171 @@ export type Database = {
           },
         ];
       };
+      scene_generations: {
+        Row: {
+          aspect_ratio: string;
+          asset_id: string | null;
+          cost_thb: number | null;
+          cost_usd: number | null;
+          created_at: string;
+          duration_s: number;
+          error: string | null;
+          est_cost_thb: number;
+          finished_at: string | null;
+          first_frame_url: string | null;
+          id: string;
+          locked_at: string | null;
+          locked_by: string | null;
+          model: string;
+          openrouter_job_id: string | null;
+          owner_id: string;
+          polled_at: string | null;
+          prompt: string;
+          provider: string;
+          resolution: string;
+          review_note: string | null;
+          review_status: string;
+          scene_id: string;
+          status: string;
+          storyboard_id: string;
+          submitted_at: string | null;
+          updated_at: string;
+          video_task: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          aspect_ratio?: string;
+          asset_id?: string | null;
+          cost_thb?: number | null;
+          cost_usd?: number | null;
+          created_at?: string;
+          duration_s: number;
+          error?: string | null;
+          est_cost_thb: number;
+          finished_at?: string | null;
+          first_frame_url?: string | null;
+          id?: string;
+          locked_at?: string | null;
+          locked_by?: string | null;
+          model: string;
+          openrouter_job_id?: string | null;
+          owner_id?: string;
+          polled_at?: string | null;
+          prompt: string;
+          provider?: string;
+          resolution?: string;
+          review_note?: string | null;
+          review_status?: string;
+          scene_id: string;
+          status?: string;
+          storyboard_id: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+          video_task: string;
+        };
+        Update: {
+          aspect_ratio?: string;
+          asset_id?: string | null;
+          cost_thb?: number | null;
+          cost_usd?: number | null;
+          created_at?: string;
+          duration_s?: number;
+          error?: string | null;
+          est_cost_thb?: number;
+          finished_at?: string | null;
+          first_frame_url?: string | null;
+          id?: string;
+          locked_at?: string | null;
+          locked_by?: string | null;
+          model?: string;
+          openrouter_job_id?: string | null;
+          owner_id?: string;
+          polled_at?: string | null;
+          prompt?: string;
+          provider?: string;
+          resolution?: string;
+          review_note?: string | null;
+          review_status?: string;
+          scene_id?: string;
+          status?: string;
+          storyboard_id?: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+          video_task?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scene_generations_asset_id_fkey";
+            columns: ["asset_id"];
+            isOneToOne: false;
+            referencedRelation: "assets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_generations_scene_id_fkey";
+            columns: ["scene_id"];
+            isOneToOne: false;
+            referencedRelation: "storyboard_scenes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_generations_storyboard_id_fkey";
+            columns: ["storyboard_id"];
+            isOneToOne: false;
+            referencedRelation: "storyboards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      scene_visual_plans: {
+        Row: {
+          duration_s: number;
+          mode: string;
+          owner_id: string;
+          prompt: string;
+          scene_id: string;
+          storyboard_id: string;
+          updated_at: string;
+          video_task: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          duration_s?: number;
+          mode?: string;
+          owner_id?: string;
+          prompt?: string;
+          scene_id: string;
+          storyboard_id: string;
+          updated_at?: string;
+          video_task?: string;
+        };
+        Update: {
+          duration_s?: number;
+          mode?: string;
+          owner_id?: string;
+          prompt?: string;
+          scene_id?: string;
+          storyboard_id?: string;
+          updated_at?: string;
+          video_task?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scene_visual_plans_scene_id_fkey";
+            columns: ["scene_id"];
+            isOneToOne: true;
+            referencedRelation: "storyboard_scenes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_visual_plans_storyboard_id_fkey";
+            columns: ["storyboard_id"];
+            isOneToOne: false;
+            referencedRelation: "storyboards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       spending_limits: {
         Row: {
           daily_thb: number | null;
@@ -1457,6 +1614,7 @@ export type Database = {
     };
     Functions: {
       cancel_render_job: { Args: { job: string }; Returns: boolean };
+      cancel_scene_generation: { Args: { generation: string }; Returns: boolean };
       claim_render_job: {
         Args: { stale_after?: string; worker: string };
         Returns: {
@@ -1485,10 +1643,46 @@ export type Database = {
           isSetofReturn: true;
         };
       };
-      fail_exhausted_render_jobs: {
-        Args: { stale_after?: string };
-        Returns: number;
+      claim_scene_generation: {
+        Args: { poll_every?: string; stale_after?: string; worker: string };
+        Returns: {
+          aspect_ratio: string;
+          asset_id: string | null;
+          cost_thb: number | null;
+          cost_usd: number | null;
+          created_at: string;
+          duration_s: number;
+          error: string | null;
+          est_cost_thb: number;
+          finished_at: string | null;
+          first_frame_url: string | null;
+          id: string;
+          locked_at: string | null;
+          locked_by: string | null;
+          model: string;
+          openrouter_job_id: string | null;
+          owner_id: string;
+          polled_at: string | null;
+          prompt: string;
+          provider: string;
+          resolution: string;
+          review_note: string | null;
+          review_status: string;
+          scene_id: string;
+          status: string;
+          storyboard_id: string;
+          submitted_at: string | null;
+          updated_at: string;
+          video_task: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "scene_generations";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
       };
+      fail_exhausted_render_jobs: { Args: { stale_after?: string }; Returns: number };
       project_costs: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1535,9 +1729,7 @@ export type Tables<
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] & DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] & DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R;
     }
@@ -1558,9 +1750,7 @@ export type TablesInsert<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I;
     }
@@ -1581,9 +1771,7 @@ export type TablesUpdate<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U;
     }
@@ -1604,9 +1792,7 @@ export type Enums<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never) = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
@@ -1619,9 +1805,7 @@ export type CompositeTypes<
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never) = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]

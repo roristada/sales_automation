@@ -20,6 +20,12 @@ import { getWorkerStatus } from "@/features/monitoring/queries";
 import { galleryList } from "@/features/products/schema";
 import { workerState } from "@/features/monitoring/status";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { clipSpec, DEFAULT_CLIP_SECONDS, type VideoTask, type VisualMode } from "@/features/ai/clips";
+import { modelFor, usdToThb } from "@/features/ai/models";
+import { isOpenRouterConfigured } from "@/features/ai/openrouter";
+import { getAiSettings, getCatalog } from "@/features/ai/queries";
+import { SCENE_KIND_LABEL } from "@/features/content/templates";
+import { type ClipScene, ClipsPanel } from "@/features/video/clips-panel";
 
 export const metadata: Metadata = { title: "Video Studio" };
 
@@ -43,11 +49,53 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   if (!sb?.project?.product) notFound();
   const { project } = sb;
   const product = project.product!;
-  const [{ data: scenes }, { data: jobs }, { data: pubs }] = await Promise.all([
+  const aiReady = isOpenRouterConfigured();
+  const [{ data: scenes }, { data: jobs }, { data: pubs }, { data: plans }, { data: generations }, aiSettings, catalog] = await Promise.all([
     db.from("storyboard_scenes").select("id, kind, narration, on_screen_text, asset:assets(id, kind, duration_s)").eq("storyboard_id", storyboardId).order("position"),
     db.from("render_jobs").select("*, output:render_outputs(*)").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(20),
     db.from("publications").select("id, platform, status").eq("project_id", project.id).neq("status", "withdrawn").order("created_at"),
+    db.from("scene_visual_plans").select("scene_id, mode, video_task, prompt, duration_s").eq("storyboard_id", storyboardId),
+    db.from("scene_generations").select("*").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(200),
+    getAiSettings(db),
+    aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
   ]);
+  const planOf = new Map((plans ?? []).map((p) => [p.scene_id, p]));
+  const hasFrame = !!product.image_url && /^https?:\/\//i.test(product.image_url);
+  const clipScenes: ClipScene[] = (scenes ?? []).map((s, i) => {
+    const p = planOf.get(s.id);
+    const plan = { mode: (p?.mode ?? "product_motion") as VisualMode, video_task: (p?.video_task ?? "video_product") as VideoTask, prompt: p?.prompt ?? "", duration_s: p?.duration_s ?? DEFAULT_CLIP_SECONDS };
+    const estimate = (task: VideoTask) => {
+      if ("error" in catalog) return null;
+      const model = modelFor(task, aiSettings.models);
+      const info = catalog.video.find((m) => m.id === model);
+      if (!info) return null;
+      const spec = clipSpec(info, plan.duration_s, task === "video_product" && hasFrame);
+      return { model, seconds: spec.duration, thb: usdToThb(spec.estUsd), priced: spec.priced };
+    };
+    const gens = (generations ?? []).filter((g) => g.scene_id === s.id);
+    // Latest few attempts plus the approved one if it's older.
+    const shown = [...gens.slice(0, 3), ...gens.slice(3).filter((g) => g.review_status === "approved")];
+    return {
+      id: s.id,
+      n: i + 1,
+      kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind,
+      narration: s.narration,
+      plan,
+      estimates: { video_product: estimate("video_product"), video_lifestyle: estimate("video_lifestyle") },
+      generations: shown.map((g) => ({
+        id: g.id,
+        status: g.status,
+        reviewStatus: g.review_status,
+        model: g.model,
+        durationS: g.duration_s,
+        assetId: g.asset_id,
+        costThb: g.cost_thb === null ? null : Number(g.cost_thb),
+        estThb: Number(g.est_cost_thb),
+        error: g.error,
+        createdAt: g.created_at,
+      })),
+    };
+  });
 
   const preview = buildTimeline({
     productName: product.name,
@@ -142,6 +190,10 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
               <VideoPreview props={preview} />
             </section>
           )}
+          <section aria-labelledby="clips-h">
+            <SectionHeader id="clips-h" title="คลิป AI ต่อฉาก" description="สร้างคลิปด้วย AI เฉพาะฉากที่ต้องการ ตรวจแล้วกด “ใช้คลิปนี้” — ฉากอื่นใช้ภาพสินค้า + motion graphics ได้ฟรี · ตอนนี้ render ยังไม่นำคลิป AI ไปใส่ในวิดีโอ (ขั้นถัดไป AI-4)" />
+            <ClipsPanel storyboardId={sb.id} scenes={clipScenes} aiReady={aiReady} approved={sb.status === "approved"} />
+          </section>
         </div>
 
         {/* Render controls first on small screens; beside the video on large ones. */}
