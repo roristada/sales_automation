@@ -243,3 +243,10 @@ Not done in AI-6: generating AI clips for a whole batch in one click (clips are 
 - [x] "ค่าใช้จ่ายวิดีโอนี้" card in the side rail: paid by kind (text / clips / voice), generating, clips still to make, voice if used, render free, total vs the per-video cap, and when each cost is charged
 - [x] Tests — unit 163 ✅ (`capAiScenes`, planner limit), RLS 33 ✅, e2e 18 ✅ (workspace: compact card, disabled create button with reason, cost card, "ประหยัด" one-click plans every scene as product photo)
 
+### Clip length follow-up ✅ (2026-10-22)
+- [x] Speech estimate calibrated on a real voice-over (Thai ≈10 chars/s, Latin letters ≈7/s); the length warning before approval counts the end card and fires at +20%; Script Studio shows the total incl. the end card, highlighted when long
+- [x] Render QA: "ความยาวเทียบเป้าหมาย" (warn at +20%) and "คลิปวนซ้ำ" (a scene outlasting its clip replays it)
+- [x] Spoken product name: `products.spoken_name` (editable in the workspace), else brand + model from the title (`spokenName`); templates and the AI script use it, the caption keeps the full title; the AI prompt also asks to stay within the target length
+- [x] Target length editable in the workspace's "ตั้งค่าวิดีโอนี้" (guides AI and warnings; scenes aren't rebuilt)
+- [x] Tests — unit 165 ✅, e2e 18 ✅; RLS 31/33: the two worker-render cases in ai-voice.test.ts lost their jobs to a `npm run worker` the user had running (old code) — environment, rerun with no other worker
+

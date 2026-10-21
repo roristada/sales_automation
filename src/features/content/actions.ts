@@ -11,7 +11,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { checkFacts, MAX_DESCRIPTION_CHARS, MAX_EXTRACTED_FACTS } from "./fact-extract";
 import { claimFactKey, parseFactKey } from "./facts";
 import { loadFacts, loadStudio, PRODUCT_COLUMNS, type Db } from "./queries";
-import { DURATIONS, getTemplate, PLATFORMS, type StoryboardDraft, TEMPLATE_VERSION, type TemplateContext } from "./templates";
+import { DURATIONS, getTemplate, PLATFORMS, spokenName, type StoryboardDraft, TEMPLATE_VERSION, type TemplateContext } from "./templates";
 import { canApprove, type ValidationIssue } from "./validate";
 
 async function requireUser() {
@@ -180,7 +180,8 @@ async function templateContext(db: Db, productId: string, platform: TemplateCont
   const { rows } = await loadFacts(db, product);
   const priceStatus = fieldStatus({ ...product, provenance: product.provenance as Provenance }, "price");
   const ctx: TemplateContext = {
-    productName: product.name,
+    productName: spokenName(product.name, product.spoken_name),
+    fullName: product.name,
     // A stale price still goes in (with its claim); validation blocks approval until it's refreshed.
     price: priceStatus === "unavailable" ? null : formatTHB(product.price),
     category: product.category,

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VISUAL_LEVEL, type VisualLevel, VISUAL_LEVELS } from "@/features/ai/clips";
 import { saveVideoSettings } from "@/features/content/workspace-actions";
+import { DURATIONS } from "@/features/content/templates";
 import { cn } from "@/lib/utils";
 
 export interface SettingChoice {
@@ -29,6 +30,7 @@ export function VideoSettings({
   voice,
   voiceDefault,
   visualLevel,
+  targetSeconds,
   aiReady,
 }: {
   projectId: string;
@@ -36,6 +38,7 @@ export function VideoSettings({
   voice: string;
   voiceDefault: string;
   visualLevel: VisualLevel;
+  targetSeconds: number;
   aiReady: boolean;
 }) {
   const router = useRouter();
@@ -44,12 +47,13 @@ export function VideoSettings({
   const [values, setValues] = useState(() => Object.fromEntries(choices.map((c) => [c.task, c.value])) as Record<string, string>);
   const [voiceName, setVoiceName] = useState(voice);
   const [level, setLevel] = useState<VisualLevel>(visualLevel);
-  const dirty = choices.some((c) => values[c.task] !== c.value) || voiceName !== voice || level !== visualLevel;
+  const [seconds, setSeconds] = useState(targetSeconds);
+  const dirty = choices.some((c) => values[c.task] !== c.value) || voiceName !== voice || level !== visualLevel || seconds !== targetSeconds;
 
   const save = () =>
     start(async () => {
       setError(null);
-      const res = await saveVideoSettings(projectId, { models: values, ttsVoice: voiceName, visualLevel: level }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      const res = await saveVideoSettings(projectId, { models: values, ttsVoice: voiceName, visualLevel: level, targetSeconds: seconds }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
       if (!res.ok) return setError(res.error);
       toast.success("บันทึกการตั้งค่าของวิดีโอนี้แล้ว");
       router.refresh();
@@ -59,6 +63,19 @@ export function VideoSettings({
   return (
     <div className="flex flex-col gap-3">
       {error && <Notice tone="error">{error}</Notice>}
+      <div className="flex flex-wrap items-end gap-3 text-[13px]">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="vs-length">ความยาวเป้าหมาย</Label>
+          <NativeSelect id="vs-length" value={seconds} onChange={(e) => setSeconds(Number(e.target.value))} className="w-36">
+            {DURATIONS.map((d) => (
+              <option key={d} value={d}>
+                {d} วินาที
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <p className="pb-2 text-xs text-muted-foreground">ใช้กำหนดความยาวที่ AI เขียน และเตือนเมื่อคลิปยาวเกิน · จำนวนฉากไม่เปลี่ยนตาม — ให้ AI เขียนสคริปต์ใหม่หลังเปลี่ยน</p>
+      </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-[13px] font-medium">ระดับภาพ (คลิป AI)</legend>
         <div role="radiogroup" aria-label="ระดับภาพ" className="grid gap-2 sm:grid-cols-3">

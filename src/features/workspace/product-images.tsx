@@ -14,22 +14,23 @@ import { updateProductImages } from "@/features/content/workspace-actions";
 const fullSize = (url: string) => url.replace(/@resize_[^/?#]+$/i, "");
 
 /** Main photo (the AI clips' first frame) and extra photos, edited in place. */
-export function ProductImages({ productId, imageUrl, gallery }: { productId: string; imageUrl: string; gallery: string[] }) {
+export function ProductImages({ productId, imageUrl, gallery, spokenName, spokenDefault }: { productId: string; imageUrl: string; gallery: string[]; spokenName: string; spokenDefault: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [main, setMain] = useState(imageUrl);
   const [extra, setExtra] = useState(gallery.join("\n"));
+  const [spoken, setSpoken] = useState(spokenName);
   const [error, setError] = useState<string | null>(null);
-  const dirty = main !== imageUrl || extra !== gallery.join("\n");
+  const dirty = main !== imageUrl || extra !== gallery.join("\n") || spoken !== spokenName;
   const shrunk = [main, ...extra.split(/\s+/)].some((u) => u && fullSize(u) !== u);
   const previews = [main, ...extra.split(/\s+/)].filter((u) => /^https?:\/\//i.test(u)).slice(0, 10);
 
   const save = () =>
     start(async () => {
       setError(null);
-      const res = await updateProductImages(productId, { image_url: main, gallery_urls: extra }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      const res = await updateProductImages(productId, { image_url: main, gallery_urls: extra, spoken_name: spoken }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
       if (!res.ok) return setError(res.error);
-      toast.success("บันทึกรูปสินค้าแล้ว");
+      toast.success("บันทึกข้อมูลสินค้าแล้ว");
       router.refresh();
     });
 
@@ -47,6 +48,11 @@ export function ProductImages({ productId, imageUrl, gallery }: { productId: str
         </ul>
       )}
       {error && <Notice tone="error">{error}</Notice>}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="ws-spoken">ชื่อเรียกในคลิป</Label>
+        <Input id="ws-spoken" value={spoken} onChange={(e) => setSpoken(e.target.value)} placeholder={spokenDefault} maxLength={60} />
+        <span className="text-xs text-muted-foreground">ชื่อที่เสียงพากย์และข้อความบนจอใช้ · ว่าง = “{spokenDefault}” (ชื่อเต็มของร้านยังอยู่ในแคปชัน) · มีผลกับสคริปต์ที่สร้างหรือให้ AI เขียนใหม่</span>
+      </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="ws-image">ลิงก์รูปหลัก</Label>
         <Input id="ws-image" type="url" value={main} onChange={(e) => setMain(e.target.value)} placeholder="https://…jpg" />
@@ -77,7 +83,7 @@ export function ProductImages({ productId, imageUrl, gallery }: { productId: str
         </Notice>
       )}
       <Button type="button" size="sm" className="self-start" onClick={save} disabled={pending || !dirty}>
-        {pending ? "กำลังบันทึก…" : "บันทึกรูป"}
+        {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลสินค้า"}
       </Button>
     </div>
   );

@@ -14,7 +14,7 @@ import type { AiPromptContext } from "./ai-assist-dialog";
 import { AiScriptDialog } from "./ai-script-dialog";
 import type { MediaAsset } from "./scene-media";
 import { type EditorFact, type EditorScene, StudioEditor } from "./studio-editor";
-import { estimateTotalSeconds, type ValidationIssue } from "./validate";
+import { END_CARD_SECONDS, estimateTotalSeconds, type ValidationIssue } from "./validate";
 
 export interface StudioShellProps {
   storyboardId: string;
@@ -47,7 +47,9 @@ export function StudioShell(p: StudioShellProps) {
   const warns = p.issues.filter((i) => i.level === "warn");
   const claims = p.scenes.flatMap((s) => s.claims);
   const verified = claims.filter((c) => c.review_status === "verified").length;
-  const est = estimateTotalSeconds(p.scenes);
+  // The whole video: scenes plus the end card.
+  const est = Math.round((estimateTotalSeconds(p.scenes) + END_CARD_SECONDS) * 10) / 10;
+  const long = est > p.targetSeconds * 1.2;
   const usedFacts = p.facts.filter((f) => f.key.startsWith("fact:") || f.value);
 
   const approve = () =>
@@ -120,11 +122,11 @@ export function StudioShell(p: StudioShellProps) {
                   {verified}/{claims.length}
                 </dd>
                 <dt className="text-muted-foreground">ความยาวโดยประมาณ</dt>
-                <dd className="text-right tabular-nums">
+                <dd className={cn("text-right tabular-nums", long && "font-medium text-warning")}>
                   {est}/{p.targetSeconds} วิ
                 </dd>
               </dl>
-              <p className="mt-1 text-xs text-muted-foreground">ความยาวประมาณจากจำนวนตัวอักษร เวลาจริงคำนวณจากเสียงพากย์ตอนทำวิดีโอ</p>
+              <p className="mt-1 text-xs text-muted-foreground">รวมการ์ดปิดท้าย {END_CARD_SECONDS} วิ · ประมาณจากจำนวนตัวอักษร เวลาจริงมาจากเสียงพากย์ตอน render</p>
               {error && (
                 <Notice tone="error" className="mt-3">
                   {error}

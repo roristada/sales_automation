@@ -165,7 +165,13 @@ describe("validateStoryboard", () => {
 
   it("estimates Thai speech time without counting tone marks", () => {
     expect(estimateSceneSeconds("")).toBe(1.5);
-    expect(estimateSceneSeconds("แบตเตอรี่ใช้งานได้ยี่สิบชั่วโมง")).toBeCloseTo(2.4, 1);
+    expect(estimateSceneSeconds("แบตเตอรี่ใช้งานได้ยี่สิบชั่วโมง")).toBeCloseTo(2.6, 1);
+  });
+
+  it("reads English model names slower than Thai, as a real voice-over did", () => {
+    // Measured on a Gemini voice-over: this line took 12.2 s, the next one 6.3 s.
+    expect(estimateSceneSeconds("นี่คือ Edifier Comfo Bass หูฟังไร้สาย Open Ear Clip On เบสหนัก AI Translation Bluetooth 6.1 เล่นเกม Low Latency IP55")).toBeGreaterThan(11);
+    expect(estimateSceneSeconds("ดีไซน์ Open-Ear แบบคลิปออน หูฟังไร้สายแบบเปิดหู (Open-Ear) หนีบใบหู (คลิปออน)")).toBeCloseTo(6.3, 0);
   });
 });
 
@@ -182,5 +188,15 @@ describe("asset licensing in validation", () => {
       ["s1", "warn"],
       ["s2", "warn"],
     ]);
+  });
+});
+
+describe("spoken product name", () => {
+  it("says the brand + model, not the shop's keyword title; the user's own name wins", async () => {
+    const { spokenName } = await import("./templates");
+    expect(spokenName("Edifier Comfo Bass หูฟังไร้สาย Open Ear Clip On เบสหนัก AI Translation Bluetooth 6.1 เล่นเกม Low Latency IP55")).toBe("Edifier Comfo Bass");
+    expect(spokenName("Edifier Comfo Bass หูฟัง", "เอดิฟายเออร์ คอมโฟเบส")).toBe("เอดิฟายเออร์ คอมโฟเบส");
+    expect(spokenName("หูฟังไร้สาย M3")).toBe("หูฟังไร้สาย M3");
+    expect(spokenName("กระติกน้ำเก็บความเย็น สแตนเลส 2 ชั้น ขนาด 1 ลิตร พร้อมหลอด")).toBe("กระติกน้ำเก็บความเย็น สแตนเลส");
   });
 });

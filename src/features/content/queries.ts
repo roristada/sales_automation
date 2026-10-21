@@ -13,10 +13,10 @@ export type Storyboard = Tables<"storyboards">;
 export type Scene = Tables<"storyboard_scenes"> & { claims: Tables<"scene_claims">[] };
 export type ProductForContent = Pick<
   Tables<"products">,
-  "id" | "name" | "price" | "category" | "marketplace" | "description" | "provenance" | "retrieved_at" | "updated_at" | "affiliate_url"
+  "id" | "name" | "spoken_name" | "price" | "category" | "marketplace" | "description" | "provenance" | "retrieved_at" | "updated_at" | "affiliate_url"
 >;
 
-export const PRODUCT_COLUMNS = "id, name, price, category, marketplace, description, provenance, retrieved_at, updated_at, affiliate_url";
+export const PRODUCT_COLUMNS = "id, name, spoken_name, price, category, marketplace, description, provenance, retrieved_at, updated_at, affiliate_url";
 
 export async function loadFacts(db: Db, product: ProductForContent): Promise<{ facts: Fact[]; rows: Tables<"product_facts">[] }> {
   const { data } = await db.from("product_facts").select("*").eq("product_id", product.id).order("position").order("created_at");

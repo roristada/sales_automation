@@ -51,7 +51,10 @@ export interface TemplateFact {
 }
 
 export interface TemplateContext {
+  /** As said in the clip (spokenName); the shop title is `fullName`. */
   productName: string;
+  /** The full shop title, used in the caption (search keywords). Defaults to productName. */
+  fullName?: string;
   /** Formatted price, or null when the product has no price. */
   price: string | null;
   category: string | null;
@@ -59,6 +62,25 @@ export interface TemplateContext {
   facts: TemplateFact[];
   platform: Platform;
   durationS: number;
+}
+
+/**
+ * The product's name as said in a clip. Shop titles are keyword lists ("Edifier Comfo Bass
+ * หูฟังไร้สาย Open Ear Clip On เบสหนัก AI Translation …"): read in full they take 10+ seconds.
+ * The user's own spoken name wins; otherwise the leading Latin words (brand + model), or the
+ * first words up to ~30 characters.
+ */
+export function spokenName(name: string, spoken?: string | null): string {
+  if (spoken?.trim()) return spoken.trim();
+  const clean = name.replace(/\s+/g, " ").trim();
+  const latin = /^[A-Za-z0-9][\w.+'&-]*(?:\s+[A-Za-z0-9][\w.+'&-]*){0,3}/.exec(clean)?.[0];
+  if (latin && latin.length >= 3 && latin.length < clean.length) return latin;
+  let out = "";
+  for (const w of clean.split(" ")) {
+    if (out && (out + " " + w).length > 30) break;
+    out = out ? `${out} ${w}` : w;
+  }
+  return out.slice(0, 60);
 }
 
 export interface ClaimDraft {
@@ -147,7 +169,7 @@ function ctaScene(ctx: TemplateContext): SceneDraft {
 
 function caption(ctx: TemplateContext, angle: string) {
   const tag = ctx.category ? ` #${ctx.category.replace(/\s+/g, "")}` : "";
-  return `${ctx.productName} — ${angle}${tag}`;
+  return `${ctx.fullName ?? ctx.productName} — ${angle}${tag}`;
 }
 
 function base(ctx: TemplateContext, hook: string, angle: string, scenes: SceneDraft[]): StoryboardDraft {

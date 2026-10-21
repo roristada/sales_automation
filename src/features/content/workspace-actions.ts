@@ -8,6 +8,7 @@ import { getCatalog } from "@/features/ai/queries";
 import { VOICE_PATTERN } from "@/features/ai/voiceover";
 import type { ActionResult } from "@/features/products/actions";
 import { productInputSchema } from "@/features/products/schema";
+import { DURATIONS } from "./templates";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 /*
@@ -28,6 +29,8 @@ const settingsSchema = z.object({
   models: z.record(z.string(), z.string()),
   ttsVoice: z.string().trim().max(100),
   visualLevel: z.enum(VISUAL_LEVELS),
+  /** Target length; guides the AI script and the length warnings (scenes aren't rebuilt). */
+  targetSeconds: z.number().refine((n) => (DURATIONS as readonly number[]).includes(n)),
 });
 
 /** Saves this video's AI picks (all its script versions). Empty = back to the Settings default. */
@@ -57,7 +60,7 @@ export async function saveVideoSettings(projectId: string, input: z.input<typeof
   const { supabase } = await requireUser();
   const { data, error } = await supabase
     .from("content_projects")
-    .update({ ai_overrides: { models, visual_level: parsed.data.visualLevel, ...(voice ? { tts_voice: voice } : {}) } })
+    .update({ ai_overrides: { models, visual_level: parsed.data.visualLevel, ...(voice ? { tts_voice: voice } : {}) }, target_duration_s: parsed.data.targetSeconds })
     .eq("id", projectId)
     .select("id, storyboards(id)")
     .maybeSingle();
@@ -67,12 +70,24 @@ export async function saveVideoSettings(projectId: string, input: z.input<typeof
   return { ok: true, data: null };
 }
 
-const imagesSchema = productInputSchema.pick({ image_url: true, gallery_urls: true });
+const imagesSchema = productInputSchema.pick({ image_url: true, gallery_urls: true }).extend({
+  spoken_name: z
+    .string()
+    .trim()
+    .max(60, "ชื่อเรียกยาวเกิน 60 ตัวอักษร")
+    .transform((s) => s || null),
+});
 
-/** The product's main photo and extra photos (the main one is the AI clips' first frame). */
-export async function updateProductImages(productId: string, input: { image_url: string; gallery_urls: string }): Promise<ActionResult<null> | { ok: false; error: string; fieldErrors: Record<string, string> }> {
+/**
+ * The product's main photo (the AI clips' first frame), extra photos, and the name said in its
+ * clips (empty = derived from the title).
+ */
+export async function updateProductImages(
+  productId: string,
+  input: { image_url: string; gallery_urls: string; spoken_name: string },
+): Promise<ActionResult<null> | { ok: false; error: string; fieldErrors: Record<string, string> }> {
   if (!uuid.safeParse(productId).success) return { ok: false, error: "รหัสไม่ถูกต้อง" };
-  const parsed = imagesSchema.safeParse({ image_url: input.image_url.trim() || null, gallery_urls: input.gallery_urls });
+  const parsed = imagesSchema.safeParse({ image_url: input.image_url.trim() || null, gallery_urls: input.gallery_urls, spoken_name: input.spoken_name });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const i of parsed.error.issues) fieldErrors[String(i.path[0])] ??= i.message;

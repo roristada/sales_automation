@@ -856,6 +856,7 @@ export type Database = {
           retrieved_at: string | null;
           source: Database["public"]["Enums"]["product_source"];
           source_product_id: string | null;
+          spoken_name: string | null;
           updated_at: string;
           url_key: string | null;
         };
@@ -882,6 +883,7 @@ export type Database = {
           retrieved_at?: string | null;
           source: Database["public"]["Enums"]["product_source"];
           source_product_id?: string | null;
+          spoken_name?: string | null;
           updated_at?: string;
           url_key?: string | null;
         };
@@ -907,6 +909,7 @@ export type Database = {
           retrieved_at?: string | null;
           source?: Database["public"]["Enums"]["product_source"];
           source_product_id?: string | null;
+          spoken_name?: string | null;
           updated_at?: string;
           url_key?: string | null;
         };

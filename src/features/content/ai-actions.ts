@@ -11,7 +11,7 @@ import { buildScenePrompt, promptFacts } from "./ai-prompt";
 import { buildScriptPrompt, parseScriptJson, SCRIPT_JSON_SCHEMA, type ScriptDraft } from "./ai-script";
 import { buildFactExtractApiPrompt, FACT_JSON_SCHEMA, MAX_DESCRIPTION_CHARS, parseFactJson, type ParsedFact } from "./fact-extract";
 import { loadStudio } from "./queries";
-import { getTemplate, type Platform, PLATFORM_LABEL, SCENE_KIND_LABEL } from "./templates";
+import { getTemplate, type Platform, PLATFORM_LABEL, SCENE_KIND_LABEL, spokenName } from "./templates";
 import { estimateSceneSeconds } from "./validate";
 
 /*
@@ -108,7 +108,8 @@ export async function aiDraftScript(storyboardId: string, input: { instruction: 
 
 function studioContext(bundle: NonNullable<Awaited<ReturnType<typeof loadStudio>>>) {
   return {
-    productName: bundle.product.name,
+    // Said in the clip: the short name, not the shop's keyword-stuffed title.
+    productName: spokenName(bundle.product.name, bundle.product.spoken_name),
     templateName: getTemplate(bundle.storyboard.template_id)?.name ?? bundle.storyboard.template_id,
     platformLabel: PLATFORM_LABEL[bundle.project.platform as Platform],
     targetSeconds: bundle.project.target_duration_s,

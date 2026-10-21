@@ -51,12 +51,15 @@ test("one page per video: photos, settings, facts, script + visuals, render", as
   await expect(page.getByText(/บางลิงก์เป็นรูปย่อ/)).toBeVisible();
   await page.getByRole("button", { name: "ใช้รูปขนาดเต็ม" }).click();
   await expect(page.getByLabel("ลิงก์รูปหลัก")).toHaveValue("https://down-th.img.susercontent.com/file/abc");
-  await page.getByRole("button", { name: "บันทึกรูป" }).click();
-  await expect(page.getByText("บันทึกรูปสินค้าแล้ว")).toBeVisible();
+  await expect(page.getByLabel("ชื่อเรียกในคลิป")).toHaveAttribute("placeholder", `ลำโพง WS ${run}`);
+  await page.getByLabel("ชื่อเรียกในคลิป").fill("ลำโพง WS");
+  await page.getByRole("button", { name: "บันทึกข้อมูลสินค้า" }).click();
+  await expect(page.getByText("บันทึกข้อมูลสินค้าแล้ว")).toBeVisible();
   await expect(steps.getByText("มีรูปหลัก")).toBeVisible();
 
   // 2. This video's AI picks (default from Settings), saved and kept.
   if (env("OPENROUTER_API_KEY")) {
+    await expect(page.getByLabel("ความยาวเป้าหมาย")).toHaveValue("15");
     const clipModel = page.getByLabel("คลิปสินค้าเคลื่อนไหว");
     await expect(clipModel).toHaveValue("");
     await expect(clipModel.locator("option").first()).toHaveText("ค่าเริ่มต้น (kwaivgi/kling-v3.0-std)");

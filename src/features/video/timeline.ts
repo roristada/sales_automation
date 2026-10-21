@@ -1,4 +1,4 @@
-import { estimateSceneSeconds } from "@/features/content/validate";
+import { END_CARD_SECONDS as END_CARD, estimateSceneSeconds } from "@/features/content/validate";
 
 /**
  * Turns an approved storyboard into a frame-exact video plan: scene timing, subtitle cues and the
@@ -28,7 +28,8 @@ export function resolveTransition(choice: string | null | undefined, index: numb
 export const SUBTITLE_MAX_CHARS = 26;
 const MIN_SCENE_SECONDS = 2;
 const HOOK_SECONDS = 2.5;
-const END_CARD_SECONDS = 3.5;
+// Same end card length the script validation counts.
+const END_CARD_SECONDS = END_CARD;
 
 /** A library image/clip shown full-screen in a scene instead of the product card. */
 export interface SceneMedia {

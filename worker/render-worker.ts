@@ -199,7 +199,7 @@ async function loadPlan(job: Tables<"render_jobs">) {
   const { data: sb } = await db.from("storyboards").select("*").eq("id", job.storyboard_id).maybeSingle();
   if (!sb) throw new RenderError("storyboard_missing", "ไม่พบสคริปต์ของงานนี้ (อาจถูกลบไปแล้ว)");
   if (sb.status !== "approved") throw new RenderError("not_approved", "สคริปต์ยังไม่ได้อนุมัติ — อนุมัติใน Script Studio ก่อน render");
-  const { data: project } = await db.from("content_projects").select("product_id").eq("id", sb.project_id).single();
+  const { data: project } = await db.from("content_projects").select("product_id, target_duration_s").eq("id", sb.project_id).single();
   const { data: product } = await db.from("products").select("name, image_url, gallery_urls").eq("id", project!.product_id).single();
   const { data: scenes } = await db
     .from("storyboard_scenes")
@@ -228,7 +228,7 @@ async function loadPlan(job: Tables<"render_jobs">) {
     }
   }
   const transitionOf = new Map((plans ?? []).map((p) => [p.scene_id, p.transition]));
-  return { sb, productId: project!.product_id, product: product!, scenes, transitionOf, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
+  return { sb, productId: project!.product_id, targetSeconds: project!.target_duration_s, product: product!, scenes, transitionOf, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
 }
 
 /**
@@ -280,6 +280,30 @@ async function ffprobe(file: string): Promise<unknown> {
   }
 }
 
+/** The finished file against the length the video was planned for (warn: it still plays). */
+function lengthCheck(seconds: number, target: number): QaCheck {
+  const over = seconds > target * 1.2;
+  return {
+    key: "length_target",
+    label: "ความยาวเทียบเป้าหมาย",
+    ok: !over,
+    detail: over ? `ยาว ${seconds.toFixed(1)} วินาที เกินเป้าหมาย ${target} วินาที — ย่อคำพูดในสคริปต์ (สร้างเวอร์ชันใหม่) แล้ว render อีกครั้ง` : `${seconds.toFixed(1)} วินาที (เป้าหมาย ${target})`,
+    level: "warn",
+  };
+}
+
+/** Scenes that outlast their clip replay it from the start, which shows as a jump. */
+function loopCheck(props: VideoProps): QaCheck {
+  const looped = props.scenes.filter((s) => s.media?.kind === "video" && s.media.durationS && s.duration / props.fps > s.media.durationS + 0.5).map((s) => s.index + 1);
+  return {
+    key: "clip_loop",
+    label: "คลิปวนซ้ำ",
+    ok: looped.length === 0,
+    detail: looped.length ? `ฉากที่ ${looped.join(", ")} ยาวกว่าคลิป คลิปจะเล่นซ้ำจากต้น — ย่อคำพูดของฉากนั้น หรือสร้างคลิปให้ยาวขึ้น` : "ทุกคลิปยาวพอสำหรับฉากของมัน",
+    level: "warn",
+  };
+}
+
 function voiceCheck(tts: TtsSettings | null, voice: Awaited<ReturnType<typeof prepareVoiceover>> | null, scenes: { narration: string }[], audioCodec: string | null): QaCheck {
   if (!tts || !voice) return { key: "voice", label: "เสียงพากย์", ok: false, detail: "ไม่ได้เลือกเสียงพากย์ — วิดีโอมีซับไทยอย่างเดียว จังหวะมาจากการประมาณ", level: "warn" };
   const narrated = scenes.filter((s) => s.narration.trim()).length;
@@ -312,7 +336,7 @@ async function processJob(job: Tables<"render_jobs">) {
   try {
     log(job.id, `เริ่มงาน (ครั้งที่ ${job.attempt}/${job.max_attempts})`);
     await update(job.id, { stage: "loading", progress: 0.02 });
-    const { sb, productId, product, scenes, transitionOf, aiClipScenes, aiClipsExpected } = await loadPlan(job);
+    const { sb, productId, targetSeconds, product, scenes, transitionOf, aiClipScenes, aiClipsExpected } = await loadPlan(job);
     const jobSettings = (job.settings ?? {}) as Record<string, Json>;
     const voiceSetup = await loadTts(job, jobSettings.tts);
     const tts = voiceSetup?.tts ?? null;
@@ -431,6 +455,8 @@ async function processJob(job: Tables<"render_jobs">) {
         detail: extra.length ? `ใช้ ${gallery.length} จาก ${extra.length} รูป${gallery.length < extra.length ? " (บางรูปโหลดไม่ได้)" : ""}` : "ไม่มีรูปเพิ่มเติม — ทุกฉากใช้รูปหลัก",
         level: "warn",
       },
+      lengthCheck(facts.durationS ?? props.durationInFrames / props.fps, targetSeconds),
+      loopCheck(props),
       { key: "disclosure", label: "เปิดเผยลิงก์ affiliate", ok: props.disclosure.includes("ค่าคอมมิชชัน"), detail: "แสดงในฉากปิดท้ายและซับไตเติล", level: "error" },
       voiceCheck(tts, voice, scenes, facts.audioCodec),
       ...(music ? [{ key: "music", label: "เพลงประกอบ", ok: music.verdict.level === "ok", detail: `${music.asset.name} — ${music.verdict.message}`, level: "warn" as const }] : []),

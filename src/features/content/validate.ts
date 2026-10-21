@@ -48,14 +48,24 @@ const normNumber = (s: string) => s.replace(/,/g, "").replace(/\.0+$/, "");
 
 /** Thai combining vowels/tone marks are not spoken as separate units. */
 const THAI_MARKS = /[ัิ-ฺ็-๎]/g;
-/** Rough Thai TTS speed in base characters per second; real timing comes from the audio (M4). */
-export const CHARS_PER_SECOND = 11;
+/**
+ * Thai TTS speed, measured on a real Gemini voice-over (2026-10-22): about 10 Thai base
+ * characters a second, but only about 7 Latin letters/digits (English words, model names and
+ * acronyms are read slowly). Real timing comes from the audio; this is for planning.
+ */
+export const THAI_CHARS_PER_SECOND = 10;
+export const LATIN_CHARS_PER_SECOND = 7;
 export const MIN_SCENE_SECONDS = 1.5;
 
 export function estimateSceneSeconds(narration: string): number {
-  const units = narration.replace(PLACEHOLDER, "").replace(THAI_MARKS, "").replace(/[\s.,!?…\-—:;"'()]/g, "").length;
-  return Math.max(MIN_SCENE_SECONDS, Math.round((units / CHARS_PER_SECOND + 0.4) * 10) / 10);
+  const text = narration.replace(PLACEHOLDER, "").replace(THAI_MARKS, "").replace(/[\s.,!?…\-—:;"'()]/g, "");
+  const latin = (text.match(/[A-Za-z0-9]/g) ?? []).length;
+  const seconds = (text.length - latin) / THAI_CHARS_PER_SECOND + latin / LATIN_CHARS_PER_SECOND + 0.4;
+  return Math.max(MIN_SCENE_SECONDS, Math.round(seconds * 10) / 10);
 }
+
+/** The end card after the last scene (CTA + disclosure), in every video. */
+export const END_CARD_SECONDS = 3.5;
 
 export function estimateTotalSeconds(scenes: { narration: string }[]): number {
   return Math.round(scenes.reduce((s, sc) => s + estimateSceneSeconds(sc.narration), 0) * 10) / 10;
@@ -139,9 +149,11 @@ export function validateStoryboard(sb: VStoryboard, scenes: VScene[], facts: Fac
     if (unbacked.length) warn(`${where}: ตัวเลข ${unbacked.join(", ")} ไม่ตรงกับข้อเท็จจริงที่ claim อ้างอิง — เพิ่ม claim หรือแก้ข้อความ`, sceneId);
   }
 
-  const est = estimateTotalSeconds(scenes);
-  if (scenes.length && est > sb.target_duration_s * 1.15) warn(`ความยาวโดยประมาณ ${est} วินาที เกินเป้าหมาย ${sb.target_duration_s} วินาที`);
-  if (scenes.length && est < sb.target_duration_s * 0.5) warn(`ความยาวโดยประมาณ ${est} วินาที สั้นกว่าเป้าหมาย ${sb.target_duration_s} วินาทีมาก`);
+  // The whole video: every scene plus the end card.
+  const est = Math.round((estimateTotalSeconds(scenes) + END_CARD_SECONDS) * 10) / 10;
+  if (scenes.length && est > sb.target_duration_s * 1.2)
+    warn(`ทั้งคลิปน่าจะยาวราว ${est} วินาที เกินเป้าหมาย ${sb.target_duration_s} วินาที — ย่อคำพูด หรือลบฉาก (เสียงจริงอาจยาวกว่านี้อีก)`);
+  if (scenes.length && est < sb.target_duration_s * 0.5) warn(`ทั้งคลิปน่าจะยาวราว ${est} วินาที สั้นกว่าเป้าหมาย ${sb.target_duration_s} วินาทีมาก`);
 
   return issues;
 }

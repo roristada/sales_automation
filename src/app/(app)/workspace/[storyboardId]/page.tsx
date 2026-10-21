@@ -14,7 +14,7 @@ import { FactsEditor } from "@/features/content/facts-editor";
 import { LLM_STATUS } from "@/features/content/llm";
 import { loadStudio } from "@/features/content/queries";
 import { StudioShell } from "@/features/content/studio-shell";
-import { getTemplate, type Platform, PLATFORM_LABEL } from "@/features/content/templates";
+import { getTemplate, type Platform, PLATFORM_LABEL, spokenName } from "@/features/content/templates";
 import { formatDate, formatTHB } from "@/features/products/data-value";
 import { galleryList } from "@/features/products/schema";
 import { ClipsToolbar, SceneVisual } from "@/features/video/clips-panel";
@@ -190,7 +190,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
           <section id="product" aria-labelledby="product-h" className="scroll-mt-4">
             <SectionHeader id="product-h" title="1. สินค้า & รูป" description="รูปหลักใช้ในวิดีโอและเป็นเฟรมแรกของคลิป AI" />
             <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[minmax(0,1fr)_260px]">
-              <ProductImages productId={product.id} imageUrl={productMore?.image_url ?? ""} gallery={gallery} />
+              <ProductImages productId={product.id} imageUrl={productMore?.image_url ?? ""} gallery={gallery} spokenName={product.spoken_name ?? ""} spokenDefault={spokenName(product.name)} />
               <dl className="grid grid-cols-[auto_1fr] content-start gap-x-3 gap-y-1.5 rounded-lg border bg-surface p-4 text-[13px]">
                 <dt className="text-muted-foreground">ราคา</dt>
                 <dd>{product.price === null ? "ไม่มีข้อมูล" : formatTHB(product.price)}</dd>
@@ -223,6 +223,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
               voice={overrides?.ttsVoice ?? ""}
               voiceDefault={voiceFor(ttsModel, account.ttsVoice) ?? "ค่าของโมเดล"}
               visualLevel={level}
+              targetSeconds={project.target_duration_s}
               aiReady={aiReady}
             />
           </section>
