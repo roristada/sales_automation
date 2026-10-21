@@ -1330,6 +1330,7 @@ export type Database = {
           prompt: string;
           scene_id: string;
           storyboard_id: string;
+          transition: string;
           updated_at: string;
           video_task: string;
         };
@@ -1341,6 +1342,7 @@ export type Database = {
           prompt?: string;
           scene_id: string;
           storyboard_id: string;
+          transition?: string;
           updated_at?: string;
           video_task?: string;
         };
@@ -1351,6 +1353,7 @@ export type Database = {
           prompt?: string;
           scene_id?: string;
           storyboard_id?: string;
+          transition?: string;
           updated_at?: string;
           video_task?: string;
         };

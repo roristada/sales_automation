@@ -8,7 +8,21 @@ import { estimateSceneSeconds } from "@/features/content/validate";
 
 export const VIDEO = { width: 1080, height: 1920, fps: 30 } as const;
 // 2: zoned layout (no text overlap), product photo per scene, spec/price/step callouts, motion.
-export const RENDERER_VERSION = 2;
+// 3: transitions between scenes (the outgoing scene stays under the incoming one), voice, music.
+export const RENDERER_VERSION = 3;
+
+/** How a scene enters from the previous one; "auto" = the template default (crossfade). */
+export const TRANSITIONS = ["auto", "cut", "fade", "slide", "zoom"] as const;
+export type TransitionChoice = (typeof TRANSITIONS)[number];
+export type Transition = Exclude<TransitionChoice, "auto">;
+export const TRANSITION_LABEL: Record<TransitionChoice, string> = { auto: "อัตโนมัติ (เฟด)", cut: "ตัดทันที", fade: "เฟด", slide: "เลื่อนเข้า", zoom: "ซูมเข้า" };
+/** Overlap between two scenes for every transition but a cut (0.4 s at 30 fps). */
+export const TRANSITION_FRAMES = 12;
+
+export function resolveTransition(choice: string | null | undefined, index: number): Transition {
+  if (index === 0) return "cut";
+  return choice && choice !== "auto" && (TRANSITIONS as readonly string[]).includes(choice) ? (choice as Transition) : "fade";
+}
 
 /** Longest subtitle line, in characters; ~2 lines of this fit the 1080px frame at the chosen size. */
 export const SUBTITLE_MAX_CHARS = 26;
@@ -40,6 +54,8 @@ export interface TimelineScene {
   index: number;
   /** Spoken narration for this scene (MP3 URL); null = silent. */
   audio: string | null;
+  /** How this scene enters (the first scene always cuts in). */
+  transition: Transition;
 }
 
 export interface SubtitleCue {
@@ -79,7 +95,7 @@ export interface TimelineInput {
   cta: string;
   disclosure: string;
   /** `audioSeconds`: how long the scene lasts with its voice line (audio length + a pause). */
-  scenes: { id: string; kind: string; narration: string; on_screen_text: string; audioSeconds?: number; audio?: string | null; media?: SceneMedia | null }[];
+  scenes: { id: string; kind: string; narration: string; on_screen_text: string; audioSeconds?: number; audio?: string | null; media?: SceneMedia | null; transition?: string | null }[];
   music?: { src: string; volume: number } | null;
 }
 
@@ -126,7 +142,7 @@ export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): Vi
     const badge = BADGE[s.kind] ? (s.kind === "price" ? BADGE.price : `${BADGE[s.kind]} ${counts[s.kind]}`) : null;
     // Photos advance only on scenes that show one, so a library clip doesn't skip a photo.
     const image = s.media || !images.length ? null : images[photo++ % images.length];
-    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null, image, badge, index, audio: s.audio ?? null });
+    scenes.push({ id: s.id, kind: s.kind, narration: s.narration, onScreenText: s.on_screen_text, from: cursor, duration, media: s.media ?? null, image, badge, index, audio: s.audio ?? null, transition: resolveTransition(s.transition, index) });
 
     // Cues share the scene time in proportion to their length, so long lines stay on longer.
     const lines = splitSubtitle(s.narration);

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AI_CLIP_LABEL, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
+import { TRANSITION_LABEL, type TransitionChoice, TRANSITIONS } from "./timeline";
 import { cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
 export interface ClipGeneration {
@@ -32,7 +33,7 @@ export interface ClipScene {
   n: number;
   kindLabel: string;
   narration: string;
-  plan: { mode: VisualMode; video_task: VideoTask; prompt: string; duration_s: number };
+  plan: { mode: VisualMode; video_task: VideoTask; prompt: string; duration_s: number; transition: TransitionChoice };
   /** Per task: model and estimate for this scene's duration. */
   estimates: Record<VideoTask, { model: string; seconds: number; thb: number; priced: boolean } | null>;
   generations: ClipGeneration[];
@@ -73,12 +74,11 @@ export function ClipsPanel({ storyboardId, scenes, aiReady, approved, reusable =
       router.refresh();
     });
 
-  if (!aiReady) {
-    return <Notice tone="info">ยังไม่ได้ตั้งค่า AI ผ่าน OpenRouter — ใส่ OPENROUTER_API_KEY ใน .env.local เพื่อสร้างคลิป AI ต่อฉาก (ตอนนี้วิดีโอใช้ภาพสินค้า + motion graphics)</Notice>;
-  }
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Transitions are free and work without AI; only the AI buttons need the key. */}
+      {!aiReady && <Notice tone="info">ยังไม่ได้ตั้งค่า AI ผ่าน OpenRouter — ใส่ OPENROUTER_API_KEY ใน .env.local เพื่อสร้างคลิป AI ต่อฉาก (ตอนนี้วิดีโอใช้ภาพสินค้า + motion graphics) · ทรานซิชันตั้งได้เลย</Notice>}
+      <div className={aiReady ? "flex flex-wrap items-center gap-3" : "hidden"}>
         <Button type="button" variant="outline" onClick={plan} disabled={pending}>
           <Sparkles aria-hidden /> {pending ? "AI กำลังวางแผน…" : "ให้ AI วางแผนภาพทุกฉาก"}
         </Button>
@@ -88,7 +88,7 @@ export function ClipsPanel({ storyboardId, scenes, aiReady, approved, reusable =
       {error && <Notice tone="error">{error}</Notice>}
       <ol className="flex flex-col gap-3">
         {scenes.map((s) => (
-          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}`} scene={s} approved={approved} reusable={reusable} />
+          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}-${s.plan.transition}`} scene={s} approved={approved} reusable={reusable} />
         ))}
       </ol>
     </div>
@@ -102,7 +102,7 @@ function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: 
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [reuseId, setReuseId] = useState(reusable[0]?.id ?? "");
-  const dirty = v.mode !== scene.plan.mode || v.video_task !== scene.plan.video_task || v.prompt !== scene.plan.prompt || v.duration_s !== scene.plan.duration_s;
+  const dirty = v.mode !== scene.plan.mode || v.video_task !== scene.plan.video_task || v.prompt !== scene.plan.prompt || v.duration_s !== scene.plan.duration_s || v.transition !== scene.plan.transition;
   const latest = scene.generations[0];
   const inFlight = latest && (latest.status === "queued" || latest.status === "generating");
   const chosen = scene.generations.find((g) => g.reviewStatus === "approved");
@@ -154,6 +154,18 @@ function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: 
               ))}
             </NativeSelect>
           </div>
+          {scene.n > 1 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={id("transition")}>ทรานซิชันเข้าฉากนี้</Label>
+              <NativeSelect id={id("transition")} value={v.transition} onChange={(e) => setV({ ...v, transition: e.target.value as TransitionChoice })}>
+                {TRANSITIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {TRANSITION_LABEL[t]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
           {v.mode === "ai_video" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={id("task")}>แบบคลิป</Label>

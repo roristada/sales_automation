@@ -209,7 +209,7 @@ async function loadPlan(job: Tables<"render_jobs">) {
   if (!scenes?.length) throw new RenderError("no_scenes", "สคริปต์ไม่มีฉาก");
   // AI-4: scenes planned as AI clips show their approved clip instead of the scene's own media.
   const [{ data: plans }, { data: approved }] = await Promise.all([
-    db.from("scene_visual_plans").select("scene_id, mode").eq("storyboard_id", sb.id),
+    db.from("scene_visual_plans").select("scene_id, mode, transition").eq("storyboard_id", sb.id),
     db
       .from("scene_generations")
       .select("scene_id, asset_id, asset:assets(id, name, kind, mime, storage_key, license, attribution, source, ai_generated, duration_s)")
@@ -227,7 +227,8 @@ async function loadPlan(job: Tables<"render_jobs">) {
       throw new RenderError("asset_license", `ฉากที่ ${s.position + 1}: ไฟล์ “${s.asset.name}” ${licenseVerdict(s.asset).message}`);
     }
   }
-  return { sb, productId: project!.product_id, product: product!, scenes, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
+  const transitionOf = new Map((plans ?? []).map((p) => [p.scene_id, p.transition]));
+  return { sb, productId: project!.product_id, product: product!, scenes, transitionOf, aiClipScenes: clips.assetByScene.size, aiClipsExpected: (plans ?? []).filter((p) => p.mode === "ai_video").length };
 }
 
 /**
@@ -306,7 +307,7 @@ async function processJob(job: Tables<"render_jobs">) {
   try {
     log(job.id, `เริ่มงาน (ครั้งที่ ${job.attempt}/${job.max_attempts})`);
     await update(job.id, { stage: "loading", progress: 0.02 });
-    const { sb, productId, product, scenes, aiClipScenes, aiClipsExpected } = await loadPlan(job);
+    const { sb, productId, product, scenes, transitionOf, aiClipScenes, aiClipsExpected } = await loadPlan(job);
     const jobSettings = (job.settings ?? {}) as Record<string, Json>;
     const voiceSetup = await loadTts(job, jobSettings.tts);
     const tts = voiceSetup?.tts ?? null;
@@ -357,7 +358,7 @@ async function processJob(job: Tables<"render_jobs">) {
       let media: SceneMedia | null = null;
       if (s.asset) media = { kind: s.asset.kind as SceneMedia["kind"], src: serve(s.asset.storage_key, s.asset.mime), durationS: s.asset.duration_s };
       const line = voice?.byScene.get(s.id);
-      return { ...s, media, audio: line ? serve(line.storageKey, "audio/mpeg") : null, audioSeconds: line ? sceneSecondsFor(line) : undefined };
+      return { ...s, media, transition: transitionOf.get(s.id), audio: line ? serve(line.storageKey, "audio/mpeg") : null, audioSeconds: line ? sceneSecondsFor(line) : undefined };
     });
     cleanups.push(() => tokens.forEach((t) => served.delete(t)));
     const props: VideoProps = buildTimeline({

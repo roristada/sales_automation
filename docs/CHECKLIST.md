@@ -191,7 +191,12 @@ Not done in AI-3: a real clip through OpenRouter (acceptance) and the 3-model co
 - [x] Render settings record `ai_clip_scenes`; preparing a publication from such a render adds "มีภาพบางส่วนในคลิปนี้สร้างด้วย AI" to the caption (disclosure stays)
 - [x] Tests — unit 145 ✅, RLS 24 ✅, e2e 15 specs ✅ (`ai3.spec.ts`: render blocked without an approved clip → approve a seeded test clip → real worker render passes QA with the clip → caption has the AI note; frames checked by eye: scene 1 shows the clip, others the product card)
 
-Not done in AI-4: scene transitions beyond the template's own (cut/fade/slide per scene); an on-video "AI" badge (only the caption note for now).
+Not done in AI-4: an on-video "AI" badge (only the caption note for now).
+
+### AI-4 follow-up — Transitions per scene ✅ (2026-10-22)
+- [x] `scene_visual_plans.transition`: อัตโนมัติ (crossfade) / ตัดทันที / เฟด / เลื่อนเข้า / ซูมเข้า, chosen per scene in Video Studio (scene 1 always cuts in); free, editable after approval, works without an API key; the AI visual planner leaves it alone
+- [x] Renderer v3: each scene stays 0.4 s past its end under the next one, so a fade is a real crossfade (clips loop to cover it); voice lines are separate sequences, so they never overlap; the end card fades in
+- [x] Tests — unit 157 ✅ (`resolveTransition`, timing unchanged), RLS 33 ✅, e2e 17 ✅ (`ai5.spec.ts` sets scene 2 to slide, saves, renders); frames checked by eye: scene 2 slides in over scene 1, later scenes crossfade
 
 ## AI-5 — Thai voice-over + music 🚧 code + tests done, voices not yet compared by ear (needs OpenRouter credit) (2026-10-22)
 - [x] OpenRouter TTS client (`speak`: `POST /audio/speech`, MP3, voice + delivery instructions, never retried; `listSpeechModels`; `getGenerationCost`) per https://openrouter.ai/docs/guides/overview/multimodal/tts

@@ -13,6 +13,7 @@ import { loadFacts, PRODUCT_COLUMNS } from "@/features/content/queries";
 import { SCENE_KIND_LABEL } from "@/features/content/templates";
 import type { ActionResult } from "@/features/products/actions";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { TRANSITIONS } from "./timeline";
 
 /*
  * AI clips per scene (docs/AI_VIDEO_PLAN.md AI-3), on an approved storyboard. Plans are edited
@@ -45,6 +46,7 @@ const planSchema = z.object({
   video_task: z.enum(VIDEO_TASKS),
   prompt: z.string().trim().max(MAX_PROMPT_CHARS, `prompt ยาวเกิน ${MAX_PROMPT_CHARS} ตัวอักษร`),
   duration_s: z.coerce.number().int().min(1).max(20),
+  transition: z.enum(TRANSITIONS).optional(),
 });
 
 export async function saveScenePlan(sceneId: string, input: z.input<typeof planSchema>): Promise<ActionResult<null>> {

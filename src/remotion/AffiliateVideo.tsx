@@ -1,7 +1,7 @@
 import { loadFont } from "@remotion/google-fonts/NotoSansThai";
 import { AbsoluteFill, Html5Audio, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { fitFontSize, SAFE, splitLabel, TEXT_WIDTH, words, ZONES } from "@/features/video/layout";
-import type { SceneMedia, TimelineScene, VideoProps } from "@/features/video/timeline";
+import { type SceneMedia, type TimelineScene, type Transition, TRANSITION_FRAMES, type VideoProps } from "@/features/video/timeline";
 
 /*
  * 1080×1920 vertical affiliate video. Every text block has its own zone (layout.ts) and a font
@@ -283,11 +283,28 @@ function SceneText({ scene }: { scene: TimelineScene }) {
 function SceneLayer({ scene, productName }: { scene: TimelineScene; productName: string }) {
   return (
     <>
-      {scene.media ? <FullBleed media={scene.media} duration={scene.duration} /> : <ProductCard imageSrc={scene.image} productName={productName} duration={scene.duration} index={scene.index} />}
+      {scene.media ? <FullBleed media={scene.media} duration={scene.duration + TRANSITION_FRAMES} /> : <ProductCard imageSrc={scene.image} productName={productName} duration={scene.duration} index={scene.index} />}
       {scene.badge && <Badge text={scene.badge} />}
       <SceneText scene={scene} />
     </>
   );
+}
+
+/**
+ * The scene's entrance over the previous one. Scenes (except the last) stay on screen for
+ * TRANSITION_FRAMES past their end, under the next scene, so a fade is a real crossfade.
+ */
+function Enter({ transition, children }: { transition: Transition; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (transition === "cut") return <AbsoluteFill>{children}</AbsoluteFill>;
+  const t = interpolate(frame, [0, TRANSITION_FRAMES], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  if (transition === "slide") {
+    const s = spring({ frame, fps, config: { damping: 18, mass: 0.7 }, durationInFrames: TRANSITION_FRAMES + 4 });
+    return <AbsoluteFill style={{ transform: `translateX(${(1 - s) * 100}%)` }}>{children}</AbsoluteFill>;
+  }
+  if (transition === "zoom") return <AbsoluteFill style={{ opacity: t, transform: `scale(${1.18 - 0.18 * t})` }}>{children}</AbsoluteFill>;
+  return <AbsoluteFill style={{ opacity: t }}>{children}</AbsoluteFill>;
 }
 
 export function AffiliateVideo(props: VideoProps) {
@@ -295,12 +312,26 @@ export function AffiliateVideo(props: VideoProps) {
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg1 }}>
       <Background imageSrc={main} />
-      {props.scenes.map((s) => (
-        <Sequence key={s.id} from={s.from} durationInFrames={s.duration} name={`scene ${s.kind}`}>
-          <SceneLayer scene={s} productName={props.productName} />
-          {s.audio && <Html5Audio src={s.audio} name="voice" />}
-        </Sequence>
-      ))}
+      {props.scenes.map((s, i) => {
+        // Stay under the next scene (or the end card) while it comes in, unless it cuts.
+        const next = props.scenes[i + 1];
+        const tail = !next || next.transition !== "cut" ? TRANSITION_FRAMES : 0;
+        return (
+          <Sequence key={s.id} from={s.from} durationInFrames={s.duration + tail} name={`scene ${s.kind}`}>
+            <Enter transition={s.transition}>
+              <SceneLayer scene={s} productName={props.productName} />
+            </Enter>
+          </Sequence>
+        );
+      })}
+      {props.scenes.map(
+        (s) =>
+          s.audio && (
+            <Sequence key={`voice-${s.id}`} from={s.from} durationInFrames={s.duration} name="voice">
+              <Html5Audio src={s.audio} name="voice" />
+            </Sequence>
+          ),
+      )}
       {props.cues.map((c, i) => (
         <Sequence key={i} from={c.from} durationInFrames={c.duration} name="subtitle">
           <Subtitle text={c.text} />
@@ -312,9 +343,11 @@ export function AffiliateVideo(props: VideoProps) {
         </Sequence>
       )}
       <Sequence from={props.endCard.from} durationInFrames={props.endCard.duration} name="end card">
-        <ProductCard imageSrc={main} productName={props.productName} duration={props.endCard.duration} index={0} />
+        <Enter transition="fade">
+          <ProductCard imageSrc={main} productName={props.productName} duration={props.endCard.duration} index={0} />
         {props.cta && <CtaButton text={props.cta} />}
         <Disclosure text={props.disclosure} />
+        </Enter>
       </Sequence>
       {props.music && <Html5Audio src={props.music.src} volume={props.music.volume} loop name="music" />}
     </AbsoluteFill>

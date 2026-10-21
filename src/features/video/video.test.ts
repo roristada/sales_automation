@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkBudget, estimateRenderCost } from "@/features/usage/budget";
 import { probeFacts, qaReport } from "./qa";
-import { buildTimeline, splitSubtitle, SUBTITLE_MAX_CHARS, toSrt, toVtt } from "./timeline";
+import { buildTimeline, resolveTransition, splitSubtitle, SUBTITLE_MAX_CHARS, toSrt, toVtt } from "./timeline";
 
 const input = {
   productName: "พัดลมพกพา",
@@ -167,5 +167,22 @@ describe("timeline photos and badges", () => {
     expect(t.scenes.map((s) => s.image)).toEqual(["main.jpg", null, "g1.jpg", "g2.jpg", "main.jpg"]);
     expect(t.scenes.map((s) => s.badge)).toEqual([null, "จุดเด่น 1", "จุดเด่น 2", "ราคา", null]);
     expect(buildTimeline({ productName: "x", imageSrc: null, hook: "", cta: "", disclosure: "d", scenes: [{ id: "a", kind: "intro", narration: "ก", on_screen_text: "" }] }).scenes[0].image).toBeNull();
+  });
+});
+
+describe("transitions", () => {
+  it("first scene cuts in; auto and unknown values crossfade; chosen ones are kept", () => {
+    expect(resolveTransition("slide", 0)).toBe("cut");
+    expect(resolveTransition("auto", 1)).toBe("fade");
+    expect(resolveTransition(null, 2)).toBe("fade");
+    expect(resolveTransition("explode", 1)).toBe("fade");
+    for (const t of ["cut", "fade", "slide", "zoom"] as const) expect(resolveTransition(t, 3)).toBe(t);
+  });
+  it("timeline carries each scene's transition without changing its timing", () => {
+    const scenes = ["intro", "feature", "cta"].map((kind, i) => ({ id: String(i), kind, narration: "หูฟังตัวนี้ดี", on_screen_text: "", transition: ["zoom", "slide", "auto"][i] }));
+    const t = buildTimeline({ productName: "x", imageSrc: null, hook: "", cta: "", disclosure: "d", scenes });
+    expect(t.scenes.map((s) => s.transition)).toEqual(["cut", "slide", "fade"]);
+    const plain = buildTimeline({ productName: "x", imageSrc: null, hook: "", cta: "", disclosure: "d", scenes: scenes.map((s) => ({ ...s, transition: undefined })) });
+    expect(t.scenes.map((s) => [s.from, s.duration])).toEqual(plain.scenes.map((s) => [s.from, s.duration]));
   });
 });

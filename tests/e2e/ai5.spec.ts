@@ -79,6 +79,14 @@ test("voice settings, music upload, render with music", async ({ page }) => {
   const voice = page.getByRole("checkbox", { name: /ใส่เสียงพากย์ AI/ });
   await expect(voice).not.toBeChecked();
   await expect(page.getByText(/google\/gemini-3\.8-flash-tts · เสียง Puck · ประมาณ ฿[\d.]+/)).toBeVisible();
+  // Scene 2 slides in (transitions are free and saved with the visual plan).
+  const second = page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 2" }) });
+  await second.getByLabel("ทรานซิชันเข้าฉากนี้").selectOption("slide");
+  await second.getByRole("button", { name: "บันทึกแผนภาพ" }).click();
+  await expect(page.getByText("บันทึกแผนภาพแล้ว")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 2" }) }).getByLabel("ทรานซิชันเข้าฉากนี้")).toHaveValue("slide");
+  await expect(page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 1" }) }).getByLabel("ทรานซิชันเข้าฉากนี้")).toHaveCount(0);
   await page.getByLabel("เพลงประกอบ").selectOption({ label: "เพลงทดสอบ (4 วิ)" });
   await page.getByRole("button", { name: "Render วิดีโอ" }).click();
   await runWorker();

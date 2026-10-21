@@ -14,7 +14,7 @@ import { PreparePublication } from "@/features/publishing/publication-forms";
 import { PUBLICATION_BADGE, PUBLICATION_STATUS_LABEL, type PublicationStatus } from "@/features/publishing/publishing";
 import type { QaReport } from "@/features/video/qa";
 import { type ActiveJob, RenderPanel } from "@/features/video/render-panel";
-import { buildTimeline } from "@/features/video/timeline";
+import { buildTimeline, type TransitionChoice } from "@/features/video/timeline";
 import { VideoPreview } from "@/features/video/video-preview";
 import { getWorkerStatus } from "@/features/monitoring/queries";
 import { galleryList } from "@/features/products/schema";
@@ -56,7 +56,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
     db.from("storyboard_scenes").select("id, kind, narration, on_screen_text, asset:assets(id, kind, duration_s)").eq("storyboard_id", storyboardId).order("position"),
     db.from("render_jobs").select("*, output:render_outputs(*)").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(20),
     db.from("publications").select("id, platform, status").eq("project_id", project.id).neq("status", "withdrawn").order("created_at"),
-    db.from("scene_visual_plans").select("scene_id, mode, video_task, prompt, duration_s").eq("storyboard_id", storyboardId),
+    db.from("scene_visual_plans").select("scene_id, mode, video_task, prompt, duration_s, transition").eq("storyboard_id", storyboardId),
     db.from("scene_generations").select("*").eq("storyboard_id", storyboardId).order("created_at", { ascending: false }).limit(200),
     getAiSettings(db),
     aiReady ? getCatalog() : Promise.resolve({ error: "ยังไม่ได้ตั้งค่า" } as const),
@@ -79,7 +79,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
   const hasFrame = !!product.image_url && /^https?:\/\//i.test(product.image_url);
   const clipScenes: ClipScene[] = (scenes ?? []).map((s, i) => {
     const p = planOf.get(s.id);
-    const plan = { mode: (p?.mode ?? "product_motion") as VisualMode, video_task: (p?.video_task ?? "video_product") as VideoTask, prompt: p?.prompt ?? "", duration_s: p?.duration_s ?? DEFAULT_CLIP_SECONDS };
+    const plan = { mode: (p?.mode ?? "product_motion") as VisualMode, video_task: (p?.video_task ?? "video_product") as VideoTask, prompt: p?.prompt ?? "", duration_s: p?.duration_s ?? DEFAULT_CLIP_SECONDS, transition: (p?.transition ?? "auto") as TransitionChoice };
     const estimate = (task: VideoTask) => {
       if ("error" in catalog) return null;
       const model = modelFor(task, aiSettings.models);
@@ -128,7 +128,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
         : s.asset
           ? { kind: s.asset.kind as "image" | "video", src: `/api/assets/${s.asset.id}`, durationS: s.asset.duration_s }
           : null;
-      return { ...s, media };
+      return { ...s, media, transition: planOf.get(s.id)?.transition };
     }),
   });
   const activeRow = jobs?.find((j) => j.status === "queued" || j.status === "processing");
