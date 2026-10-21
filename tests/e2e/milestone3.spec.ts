@@ -50,8 +50,10 @@ test("content planning flow", async ({ page }) => {
   await expect(page).toHaveURL(/\/studio\/[0-9a-f-]{36}$/);
   const studioUrl = page.url();
 
-  // Draft: intro, 2 features, price, CTA. Disclosure present, approval blocked until claims are checked.
-  await expect(page.getByRole("heading", { name: /^ฉากที่ \d/ })).toHaveCount(5);
+  // Draft: intro, 2 features, CTA to the basket (no price in the clip since template v2).
+  // Disclosure present, approval blocked until claims are checked.
+  await expect(page.getByRole("heading", { name: /^ฉากที่ \d/ })).toHaveCount(4);
+  await expect(page.getByText("กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย").first()).toBeVisible();
   await expect(page.getByText(/#ได้รับค่าคอมมิชชัน/)).toBeVisible();
   const approve = page.getByRole("button", { name: "อนุมัติสคริปต์" });
   await expect(approve).toBeDisabled();
@@ -69,8 +71,8 @@ test("content planning flow", async ({ page }) => {
 
   // Check every claim against its fact.
   const confirm = page.getByRole("button", { name: "ตรงกับข้อเท็จจริง" });
-  await expect(confirm).toHaveCount(3);
-  for (let i = 0; i < 3; i++) {
+  await expect(confirm).toHaveCount(2);
+  for (let i = 0; i < 2; i++) {
     await confirm.and(page.locator(":enabled")).first().click();
     await expect(page.getByText("ตรวจแล้ว", { exact: true })).toHaveCount(i + 1);
   }
@@ -91,7 +93,7 @@ test("content planning flow", async ({ page }) => {
   await page.getByRole("button", { name: "สร้างเวอร์ชันใหม่เพื่อแก้ไข" }).click();
   await expect(page).not.toHaveURL(studioUrl);
   await expect(page.getByRole("navigation", { name: "เวอร์ชัน" })).toContainText("2");
-  await expect(page.getByText("ตรวจแล้ว", { exact: true })).toHaveCount(3);
+  await expect(page.getByText("ตรวจแล้ว", { exact: true })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "อนุมัติสคริปต์" })).toBeEnabled();
 
   // Manual AI help: copy the prompt, paste a reply back → scene marked AI, claims need checking again.
@@ -110,7 +112,7 @@ test("content planning flow", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("AI เขียน · ต้องตรวจ")).toBeVisible();
   await expect(page.getByLabel("คำพูด (เสียงพากย์)").nth(1)).toHaveValue("ฟังเพลงได้ยาวๆ แบตอยู่ได้ถึง 20 ชั่วโมง");
-  await expect(page.getByText("ตรวจแล้ว", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("ตรวจแล้ว", { exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "อนุมัติสคริปต์" })).toBeDisabled();
 
   // Listed in Content Planner and Script Studio.

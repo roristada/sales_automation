@@ -398,8 +398,9 @@ export interface SpeechInput {
 }
 
 export interface SpeechResult {
-  /** MP3 bytes. */
+  /** MP3, or raw 16-bit PCM from PCM-only providers (`contentType` "audio/pcm;rate=…"). */
   audio: Buffer;
+  contentType: string;
   generationId: string | null;
 }
 
@@ -410,8 +411,8 @@ const PCM_ONLY = ["google/"];
 
 /**
  * `POST /audio/speech` — the body is the audio itself. MP3 is asked for, except from providers
- * that only send raw PCM, which is converted to MP3 with ffmpeg. Never retried: each call is
- * billed. Errors come back as JSON.
+ * that only send raw PCM (the worker converts it: src/features/ai/pcm.ts). Never retried: each
+ * call is billed. Errors come back as JSON.
  */
 export async function speak(input: SpeechInput): Promise<SpeechResult> {
   const key = openRouterKey();
@@ -447,15 +448,7 @@ export async function speak(input: SpeechInput): Promise<SpeechResult> {
   const raw = Buffer.from(await res.arrayBuffer());
   if (!raw.length) throw new OpenRouterError("OpenRouter ส่งไฟล์เสียงว่างกลับมา");
   if (raw.length > MAX_SPEECH_BYTES) throw new OpenRouterError("ไฟล์เสียงใหญ่เกินกำหนด");
-  const generationId = res.headers.get("x-generation-id");
-  if (type.startsWith("audio/mpeg")) return { audio: raw, generationId };
-  // Imported here so the Next.js side never loads child_process for the other calls.
-  const { pcmFormat, pcmToMp3 } = await import("./pcm");
-  try {
-    return { audio: await pcmToMp3(raw, pcmFormat(type)), generationId };
-  } catch (e) {
-    throw new OpenRouterError(`แปลงเสียงจาก OpenRouter เป็น MP3 ไม่สำเร็จ (ต้องติดตั้ง FFmpeg หรือตั้ง FFMPEG_PATH): ${(e as Error).message}`);
-  }
+  return { audio: raw, contentType: type, generationId: res.headers.get("x-generation-id") };
 }
 
 /**

@@ -86,7 +86,7 @@ export async function aiDraftScript(storyboardId: string, input: { instruction: 
   if (bundle.storyboard.status === "approved") return { ok: false, error: "สคริปต์นี้อนุมัติแล้วจึงแก้ไขไม่ได้ — สร้างเวอร์ชันใหม่เพื่อแก้" };
   const prompt = buildScriptPrompt(
     { ...studioContext(bundle), instruction: input.instruction },
-    bundle.scenes.map((s) => ({ kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind, narration: s.narration, on_screen_text: s.on_screen_text, visual_note: s.visual_note })),
+    bundle.scenes.map((s) => ({ kind: s.kind, kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind, narration: s.narration, on_screen_text: s.on_screen_text, visual_note: s.visual_note })),
     bundle.facts,
   );
   const run = await runAiChat(supabase, user.id, {

@@ -219,3 +219,11 @@ Not done in AI-5: listening to Gemini vs ElevenLabs v4 vs Fish (free) in Thai an
 - [x] Tests — unit 155 ✅, RLS 33 ✅ (`ai-batch.test.ts`: batch ownership/links, clip reuse rules, AI in project costs), e2e 17 specs ✅ (`ai6.spec.ts`: batch of 2 drafted → approve one → render only that one, not twice → Analytics section); paid branch run once with E2E_PAID=1: DeepSeek wrote the batch script for real
 
 Not done in AI-6: generating AI clips for a whole batch in one click (clips are costly — still per scene in each Video Studio); fact extraction inside a batch (facts must be confirmed by hand before a script can cite them).
+
+## First real paid tests (2026-10-22, credit $10)
+- [x] Script bake-off: Qwen 3.8 Flash returned nothing (฿0.10, 89 s); Sonnet 5.5 valid but ฿0.68 and thinner than DeepSeek (฿0.017) → DeepSeek stays default
+- [x] Voices: Gemini TTS refuses mp3 (HTTP 400) → `speak()` asks PCM-only providers for "pcm", the worker converts to MP3 (`src/features/ai/pcm.ts`); ElevenLabs needs an explicit voice → default "Rachel". User picked Gemini **Puck** (new default) and ElevenLabs v4 as OK
+- [x] Video bake-off (`scripts/video-bakeoff.ts`, ฿37.80, cost = estimate exactly): Veo 3.1 Lite / Kling v3.0 std / Veo 3.1 Fast all kept the square shop photo's shape (letterboxed or 960×960)
+- [x] Fix: the worker fits the product photo onto a 720×1280 frame (padding in the photo's own corner colours) and sends it as a data: URL (OpenRouter accepts it — tested, ฿4.20, clip fills 9:16, no bars); each finished clip gets a shape check (`checkClipShape`: not 9:16 / black bars via cropdetect) shown to the reviewer (`scene_generations.quality_note`)
+- [x] Templates v2: no price in the clip except "แจ้งราคา"; the CTA sends viewers to the basket/link for the current price and invites them to check discount codes; the AI script prompt forbids price figures without a price scene and never promises a discount not in the facts
+

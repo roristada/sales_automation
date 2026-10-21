@@ -37,6 +37,16 @@ describe("whole-script prompt", () => {
     expect(p).toContain("[F3] ราคา: ฿1,425");
     expect(p).not.toContain("หมวดหมู่:");
     expect(p).toMatch(/ห้ามเพิ่มสเปก/);
+    // No price scene: no price figure; discount codes may be mentioned, never promised.
+    expect(p).toMatch(/ห้ามบอกราคาเป็นตัวเลข/);
+    expect(p).toMatch(/ห้ามบอกว่ามีส่วนลด/);
+    const withPrice = buildScriptPrompt(
+      { productName: "ลำโพง", templateName: "แจ้งราคา", platformLabel: "TikTok", targetSeconds: 15, instruction: "" },
+      [{ kind: "price", kindLabel: "ราคา", narration: "", on_screen_text: "", visual_note: "" }],
+      facts,
+    );
+    expect(withPrice).not.toMatch(/ห้ามบอกราคาเป็นตัวเลข/);
+    expect(withPrice).toMatch(/ราคาอาจเปลี่ยนได้/);
   });
 
   it("uses strict JSON schemas (every property required, no extras)", () => {

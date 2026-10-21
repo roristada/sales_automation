@@ -7,11 +7,18 @@ import type { SpeechModel } from "./openrouter";
  * the same model, voice, delivery and text is generated once and reused (tts_cache).
  */
 
-/** Voices for models that need one; others use their provider's default. */
-const DEFAULT_VOICE: { prefix: string; voice: string }[] = [{ prefix: "google/", voice: "Kore" }];
+/**
+ * Voices for models that need one; others use their provider's default. Picked by ear on a Thai
+ * product line (2026-10-22): Gemini Puck; ElevenLabs refuses a request without a voice, so it
+ * gets its stock multilingual voice "Rachel" (by id).
+ */
+const DEFAULT_VOICE: { prefix: string; voice: string }[] = [
+  { prefix: "google/", voice: "Puck" },
+  { prefix: "elevenlabs/", voice: "21m00Tcm4TlvDq8ikWAM" },
+];
 
 /** Gemini TTS voices (Google's list), offered in Settings when a Gemini model is picked. */
-export const GEMINI_VOICES = ["Kore", "Puck", "Zephyr", "Charon", "Leda", "Aoede", "Fenrir", "Orus", "Callirrhoe", "Autonoe", "Sulafat", "Achird"] as const;
+export const GEMINI_VOICES = ["Puck", "Kore", "Zephyr", "Charon", "Leda", "Aoede", "Fenrir", "Orus", "Callirrhoe", "Autonoe", "Sulafat", "Achird"] as const;
 
 export function voiceFor(model: string, picked: string | null | undefined): string | null {
   if (picked) return picked;

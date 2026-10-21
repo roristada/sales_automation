@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { usdToThb } from "@/features/ai/models";
 import { downloadVideo, getVideoJob, isOpenRouterConfigured, OpenRouterError, submitVideo } from "@/features/ai/openrouter";
 import { runFfprobe } from "@/features/video/ffprobe";
+import { checkClipShape, portraitFrame } from "@/features/video/frame";
+import { fetchPublic } from "@/features/video/safe-fetch";
 import { probeFacts } from "@/features/video/qa";
 import type { StorageAdapter } from "@/features/video/storage";
 import type { Database, Tables } from "@/lib/supabase/database.types";
@@ -51,9 +53,29 @@ async function finish(db: Db, id: string, patch: Database["public"]["Tables"]["s
     .in("status", ["queued", "generating"]);
 }
 
+const MAX_FRAME_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The first frame as sent: the product photo fitted onto 9:16 (models keep the first frame's
+ * shape), as a data: URL. The photo URL is user-supplied, so it's fetched with the SSRF guard.
+ * If it can't be prepared, the original URL goes instead (the clip may come back letterboxed).
+ */
+async function firstFrame(url: string | null, log: Log, id: string): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const res = await fetchPublic(url, { timeoutMs: 15_000, maxBytes: MAX_FRAME_BYTES });
+    if (res.status < 200 || res.status >= 300 || !/^image\//.test(res.contentType)) throw new Error(`HTTP ${res.status} ${res.contentType}`);
+    return `data:image/jpeg;base64,${(await portraitFrame(res.body)).toString("base64")}`;
+  } catch (e) {
+    log(id, `เตรียมรูปเฟรมแรกแบบ 9:16 ไม่สำเร็จ ใช้รูปเดิม: ${message(e)}`);
+    return url;
+  }
+}
+
 async function submit(db: Db, g: Generation, log: Log) {
   try {
-    const job = await submitVideo({ model: g.model, prompt: g.prompt, duration: g.duration_s, aspectRatio: "9:16", resolution: g.resolution, firstFrameUrl: g.first_frame_url });
+    const frame = await firstFrame(g.first_frame_url, log, g.id);
+    const job = await submitVideo({ model: g.model, prompt: g.prompt, duration: g.duration_s, aspectRatio: "9:16", resolution: g.resolution, firstFrameUrl: frame });
     await db
       .from("scene_generations")
       .update({ status: "generating", openrouter_job_id: job.id, submitted_at: new Date().toISOString(), polled_at: new Date().toISOString(), locked_by: null, locked_at: null })
@@ -68,10 +90,10 @@ async function submit(db: Db, g: Generation, log: Log) {
   }
 }
 
-async function storeClip(db: Db, storage: StorageAdapter, g: Generation, bytes: Buffer): Promise<{ assetId: string; durationS: number | null }> {
+async function storeClip(db: Db, storage: StorageAdapter, g: Generation, bytes: Buffer): Promise<{ assetId: string; durationS: number | null; qualityNote: string | null }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const { data: dup } = await db.from("assets").select("id, duration_s").eq("owner_id", g.owner_id).eq("sha256", sha256).maybeSingle();
-  if (dup) return { assetId: dup.id, durationS: dup.duration_s };
+  if (dup) return { assetId: dup.id, durationS: dup.duration_s, qualityNote: null };
 
   const tmp = await mkdtemp(path.join(os.tmpdir(), "ai-clip-"));
   try {
@@ -79,6 +101,7 @@ async function storeClip(db: Db, storage: StorageAdapter, g: Generation, bytes: 
     await writeFile(file, bytes);
     const facts = probeFacts(await runFfprobe(file));
     if (!facts.videoCodec) throw new Error("ไฟล์ที่ได้ไม่ใช่วิดีโอที่อ่านได้");
+    const shape = await checkClipShape(file, facts);
     const { data: sb } = await db.from("storyboards").select("project:content_projects(product_id)").eq("id", g.storyboard_id).maybeSingle();
     const { data: scene } = await db.from("storyboard_scenes").select("position").eq("id", g.scene_id).maybeSingle();
     const assetId = randomUUID();
@@ -108,7 +131,7 @@ async function storeClip(db: Db, storage: StorageAdapter, g: Generation, bytes: 
       await storage.removePrefix(`${g.owner_id}/${assetId}`);
       throw new Error(`บันทึกไฟล์ไม่สำเร็จ: ${error.message}`);
     }
-    return { assetId, durationS: facts.durationS };
+    return { assetId, durationS: facts.durationS, qualityNote: shape.note };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
@@ -145,8 +168,8 @@ async function poll(db: Db, storage: StorageAdapter, g: Generation, log: Log) {
   // completed
   try {
     const bytes = await downloadVideo(job.id);
-    const { assetId, durationS } = await storeClip(db, storage, g, bytes);
-    await finish(db, g.id, { status: "succeeded", asset_id: assetId, finished_at: now, cost_usd: job.costUsd ?? 0, cost_thb: usdToThb(job.costUsd ?? 0), error: null });
+    const { assetId, durationS, qualityNote } = await storeClip(db, storage, g, bytes);
+    await finish(db, g.id, { status: "succeeded", asset_id: assetId, finished_at: now, cost_usd: job.costUsd ?? 0, cost_thb: usdToThb(job.costUsd ?? 0), error: null, quality_note: qualityNote });
     await logRequest(db, g, "succeeded", job.costUsd, { generationId: job.generationId, seconds: durationS ?? g.duration_s });
     log(g.id, `คลิป AI เสร็จ ฿${usdToThb(job.costUsd ?? 0).toFixed(2)} → asset ${assetId}`);
   } catch (e) {

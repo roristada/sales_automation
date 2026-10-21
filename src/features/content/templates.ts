@@ -9,7 +9,8 @@ import { fieldKey, factKey } from "./facts";
  * - The affiliate disclosure is always included.
  */
 
-export const TEMPLATE_VERSION = 1;
+// 2: no price in the clip except "แจ้งราคา" — the CTA sends viewers to the basket/link for the current price.
+export const TEMPLATE_VERSION = 2;
 
 export const SCENE_KIND_LABEL: Record<string, string> = {
   intro: "แนะนำสินค้า",
@@ -32,11 +33,16 @@ export const DEFAULT_DURATION: (typeof DURATIONS)[number] = 15;
 
 export const DISCLOSURE = "#ได้รับค่าคอมมิชชัน ลิงก์ในคลิปเป็นลิงก์ affiliate ผู้ทำคลิปอาจได้รับค่าคอมมิชชันเมื่อมีการซื้อผ่านลิงก์";
 
+/**
+ * Prices change faster than a posted clip, so the clip sends viewers to the basket/link for the
+ * current price. It invites them to check for discount codes without claiming there is one.
+ */
 const CTA: Record<Platform, string> = {
-  tiktok: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในคลิป",
-  reels: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในไบโอ",
-  shorts: "ดูรายละเอียดและราคาล่าสุดได้ที่ลิงก์ในคำอธิบาย",
+  tiktok: "กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย",
+  reels: "ดูราคาล่าสุดและเช็กโค้ดส่วนลดได้ที่ลิงก์ในไบโอ",
+  shorts: "ดูราคาล่าสุดและเช็กโค้ดส่วนลดได้ที่ลิงก์ในคำอธิบาย",
 };
+const CTA_ON_SCREEN: Record<Platform, string> = { tiktok: "กดตะกร้าดูราคา", reels: "ลิงก์ในไบโอ", shorts: "ลิงก์ในคำอธิบาย" };
 
 export interface TemplateFact {
   id: string;
@@ -136,7 +142,7 @@ function priceScene(ctx: TemplateContext, lead = "ราคาตอนที่
 }
 
 function ctaScene(ctx: TemplateContext): SceneDraft {
-  return { kind: "cta", narration: CTA[ctx.platform], on_screen_text: "ลิงก์ในคลิป", visual_note: "สินค้าเต็มเฟรม + ลูกศรชี้ลิงก์", claims: [] };
+  return { kind: "cta", narration: CTA[ctx.platform], on_screen_text: CTA_ON_SCREEN[ctx.platform], visual_note: "สินค้าเต็มเฟรม + ลูกศรชี้ตะกร้า/ลิงก์", claims: [] };
 }
 
 function caption(ctx: TemplateContext, angle: string) {
@@ -154,14 +160,13 @@ export const TEMPLATES: ContentTemplate[] = [
   {
     id: "quick_review",
     name: "รีวิวสั้น",
-    description: "แนะนำสินค้า จุดเด่นจากข้อเท็จจริง ราคา และลิงก์",
-    needs: { price: true, facts: 2 },
+    description: "แนะนำสินค้า จุดเด่นจากข้อเท็จจริง แล้วชวนกดตะกร้าดูราคา",
+    needs: { price: false, facts: 2 },
     literals: [],
     build: (ctx) =>
       base(ctx, `${ctx.productName} มีอะไรน่าสนใจบ้าง มาดูกัน`, "รีวิวสั้น", [
         { kind: "intro", narration: `นี่คือ ${ctx.productName}`, on_screen_text: clip(ctx.productName, 60), visual_note: "สินค้าเต็มเฟรม หมุนให้เห็นรอบตัว", claims: [] },
         ...range(featureCount(ctx.durationS)).map((i) => featureScene(ctx, i)),
-        priceScene(ctx),
         ctaScene(ctx),
       ]),
   },
@@ -176,7 +181,6 @@ export const TEMPLATES: ContentTemplate[] = [
         { kind: "problem", narration: placeholder("เล่าปัญหาที่สินค้านี้ช่วยได้ ด้วยประสบการณ์จริง"), on_screen_text: "", visual_note: "สถานการณ์ที่เกิดปัญหา", claims: [] },
         { ...featureScene(ctx, 0, "solution"), visual_note: `ใช้ ${ctx.productName} แก้ปัญหานั้น` },
         ...range(featureCount(ctx.durationS) - 1).map((i) => featureScene(ctx, i + 1)),
-        ...(ctx.price ? [priceScene(ctx)] : []),
         ctaScene(ctx),
       ]),
   },
@@ -192,7 +196,6 @@ export const TEMPLATES: ContentTemplate[] = [
           const s = featureScene(ctx, i);
           return { ...s, on_screen_text: s.on_screen_text ? `${i + 1}. ${s.on_screen_text}` : s.on_screen_text };
         }),
-        ...(ctx.price ? [priceScene(ctx)] : []),
         ctaScene(ctx),
       ]),
   },
@@ -207,7 +210,6 @@ export const TEMPLATES: ContentTemplate[] = [
         { kind: "unbox", narration: "มาแกะกล่องกัน", on_screen_text: "แกะกล่อง", visual_note: "มือเปิดกล่อง เห็นของในกล่องทั้งหมด", claims: [] },
         { kind: "in_box", narration: placeholder("ในกล่องมีอะไรบ้าง (พูดเฉพาะที่เห็นจริงในคลิป)"), on_screen_text: "", visual_note: "วางของในกล่องเรียงกัน", claims: [] },
         ...range(featureCount(ctx.durationS)).map((i) => featureScene(ctx, i)),
-        ...(ctx.price ? [priceScene(ctx)] : []),
         ctaScene(ctx),
       ]),
   },

@@ -1227,6 +1227,7 @@ export type Database = {
           polled_at: string | null;
           prompt: string;
           provider: string;
+          quality_note: string | null;
           resolution: string;
           review_note: string | null;
           review_status: string;
@@ -1258,6 +1259,7 @@ export type Database = {
           polled_at?: string | null;
           prompt: string;
           provider?: string;
+          quality_note?: string | null;
           resolution?: string;
           review_note?: string | null;
           review_status?: string;
@@ -1288,6 +1290,7 @@ export type Database = {
           polled_at?: string | null;
           prompt?: string;
           provider?: string;
+          quality_note?: string | null;
           resolution?: string;
           review_note?: string | null;
           review_status?: string;
@@ -1824,6 +1827,7 @@ export type Database = {
           polled_at: string | null;
           prompt: string;
           provider: string;
+          quality_note: string | null;
           resolution: string;
           review_note: string | null;
           review_status: string;

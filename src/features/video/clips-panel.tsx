@@ -25,6 +25,8 @@ export interface ClipGeneration {
   costThb: number | null;
   estThb: number;
   error: string | null;
+  /** Worker's check of the clip's shape (not 9:16, black bars); null = fills the frame. */
+  qualityNote: string | null;
   createdAt: string;
 }
 
@@ -260,6 +262,7 @@ function SceneClip({ scene, approved, reusable }: { scene: ClipScene; approved: 
                     </span>
                   </div>
                   {g.status === "failed" && g.error && <p className="text-xs text-destructive">{g.error}</p>}
+                  {g.status === "succeeded" && g.qualityNote && <p className="text-xs text-warning">{g.qualityNote}</p>}
                   {g.status === "generating" && <p className="text-xs text-muted-foreground">ปกติใช้ 30 วินาที ถึงหลายนาที หน้านี้อัปเดตเอง</p>}
                   {g.status === "succeeded" && (
                     <div className="flex flex-wrap gap-2">

@@ -55,7 +55,7 @@ async function main() {
       targetSeconds: project.target_duration_s,
       instruction: "",
     },
-    scenes.map((s) => ({ kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind, narration: s.narration, on_screen_text: s.on_screen_text, visual_note: s.visual_note })),
+    scenes.map((s) => ({ kind: s.kind, kindLabel: SCENE_KIND_LABEL[s.kind] ?? s.kind, narration: s.narration, on_screen_text: s.on_screen_text, visual_note: s.visual_note })),
     facts,
   );
 

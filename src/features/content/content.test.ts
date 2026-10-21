@@ -81,6 +81,18 @@ describe("templates", () => {
     expect(price.claims).toEqual([{ text: expect.stringContaining("฿590.00"), factKey: "field:price" }]);
     expect(price.narration).toContain("ราคาอาจเปลี่ยน");
   });
+
+  it("only แจ้งราคา states the price; the rest send viewers to the basket and never promise a discount", () => {
+    for (const t of TEMPLATES.filter((x) => x.id !== "deal_alert")) {
+      const d = t.build(ctx());
+      expect(d.scenes.some((s) => s.kind === "price"), t.id).toBe(false);
+      expect(JSON.stringify(d), t.id).not.toContain("590");
+    }
+    const tiktok = TEMPLATES[0].build(ctx());
+    expect(tiktok.cta).toBe("กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย");
+    expect(tiktok.scenes.at(-1)).toMatchObject({ kind: "cta", on_screen_text: "กดตะกร้าดูราคา" });
+    expect(TEMPLATES[0].build(ctx({ platform: "shorts" })).cta).toContain("ลิงก์ในคำอธิบาย");
+  });
 });
 
 /** Turns a draft into validator input, with every claim in the given review state. */

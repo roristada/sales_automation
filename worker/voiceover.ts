@@ -10,6 +10,7 @@ import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { usdToThb } from "@/features/ai/models";
 import { getGenerationCost, OpenRouterError, type SpeechModel, speak } from "@/features/ai/openrouter";
+import { speechToMp3 } from "@/features/ai/pcm";
 import { estimateSpeechUsd, speechText, VOICE_PAD_S } from "@/features/ai/voiceover";
 import { speechCacheKey, speechStorageKey } from "@/features/ai/voiceover-key";
 import { runFfprobe } from "@/features/video/ffprobe";
@@ -73,7 +74,14 @@ export async function prepareVoiceover(
         throw new VoiceoverError(`เสียงพากย์ฉากที่ ${s.position + 1} ไม่สำเร็จ: ${msg}`, e instanceof OpenRouterError && e.retryable);
       }
       const file = path.join(input.tmp, `voice-${s.position}.mp3`);
-      await writeFile(file, result.audio);
+      let mp3: Buffer;
+      try {
+        mp3 = await speechToMp3(result.audio, result.contentType);
+      } catch (e) {
+        calls.push({ generationId: result.generationId, chars: text.length, seconds: 0 });
+        throw new VoiceoverError(`เสียงพากย์ฉากที่ ${s.position + 1}: ${(e as Error).message}`, false);
+      }
+      await writeFile(file, mp3);
       const seconds = probeFacts(await runFfprobe(file)).durationS;
       calls.push({ generationId: result.generationId, chars: text.length, seconds: seconds ?? 0 });
       if (!seconds || seconds <= 0) throw new VoiceoverError(`ไฟล์เสียงฉากที่ ${s.position + 1} อ่านความยาวไม่ได้`, true);

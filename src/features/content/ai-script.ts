@@ -11,6 +11,8 @@ import type { Fact } from "./facts";
  */
 
 export interface ScriptPromptScene {
+  /** Scene kind ("price", "cta", …); a script may state the price only if it has a price scene. */
+  kind?: string;
   kindLabel: string;
   narration: string;
   on_screen_text: string;
@@ -30,6 +32,9 @@ export function buildScriptPrompt(ctx: PromptContext, scenes: ScriptPromptScene[
         })
         .join("\n")
     : "(ไม่มี — ห้ามกล่าวถึงคุณสมบัติ ราคา หรือตัวเลขใดๆ)";
+  const priceRule = scenes.some((s) => s.kind === "price")
+    ? "- ถ้าพูดถึงราคา ให้บอกว่าราคาอาจเปลี่ยนได้"
+    : "- ห้ามบอกราคาเป็นตัวเลข (ราคาเปลี่ยนเร็วกว่าคลิป) — ชวนกดตะกร้าหรือลิงก์เพื่อดูราคาล่าสุดแทน";
   const sceneLines = scenes.map((s, i) => `${i + 1}. ${s.kindLabel} — ตอนนี้: ${clip(s.narration || "-", 200)}`).join("\n");
 
   return `ช่วยเขียนบททั้งคลิปสำหรับวิดีโอสั้นแนวตั้ง (${ctx.platformLabel} ความยาวประมาณ ${ctx.targetSeconds} วินาที) ที่แนะนำสินค้าผ่านลิงก์ affiliate
@@ -49,7 +54,8 @@ ${factLines}
 - hook: ประโยคเปิดสั้นๆ ไม่เกิน 80 ตัวอักษร
 - พูดถึงคุณสมบัติ ราคา หรือตัวเลขได้เฉพาะที่อยู่ในข้อเท็จจริงด้านบน ห้ามเพิ่มสเปก ตัวเลข หรือผลลัพธ์ที่ไม่มีในรายการ
 - ห้ามอ้างว่าดีที่สุด ขายดี รับประกันผล หรือเปรียบเทียบกับแบรนด์อื่น
-- ถ้าพูดถึงราคา ให้บอกว่าราคาอาจเปลี่ยนได้
+${priceRule}
+- ชวนเช็กโค้ดส่วนลดได้ แต่ห้ามบอกว่ามีส่วนลด ลดกี่บาท/กี่เปอร์เซ็นต์ หรือโปรถึงวันไหน ถ้าไม่มีในข้อเท็จจริง
 - ไม่ต้องเขียนข้อความเปิดเผยลิงก์ affiliate (ระบบใส่ให้แล้ว)
 - on_screen_text ไม่เกิน 60 ตัวอักษร; visual_note บอกภาพที่ควรใช้
 - ทุกประโยคที่กล่าวถึงข้อเท็จจริง ใส่ใน claims พร้อม fact เป็นรหัส เช่น "F1" — claim ต้องพูดสิ่งที่ข้อเท็จจริงนั้นบอกตรงๆ ห้ามโยงคำโฆษณา (เช่น "เบสหนัก" "เสียงดี") เข้ากับสเปก แม้คำนั้นจะอยู่ในชื่อสินค้า

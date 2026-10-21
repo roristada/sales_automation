@@ -12,6 +12,16 @@ export function pcmFormat(contentType: string): { rate: number; channels: number
   return { rate: rate >= 8000 && rate <= 192000 ? rate : 24000, channels: channels >= 1 && channels <= 2 ? channels : 1 };
 }
 
+/** Speech as MP3: passed through, or converted from PCM. */
+export async function speechToMp3(audio: Buffer, contentType: string): Promise<Buffer> {
+  if (!contentType.startsWith("audio/pcm")) return audio;
+  try {
+    return await pcmToMp3(audio, pcmFormat(contentType));
+  } catch (e) {
+    throw new Error(`แปลงเสียงเป็น MP3 ไม่สำเร็จ (ต้องติดตั้ง FFmpeg หรือตั้ง FFMPEG_PATH): ${(e as Error).message}`);
+  }
+}
+
 export function pcmToMp3(pcm: Buffer, { rate, channels }: { rate: number; channels: number }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const p = spawn(process.env.FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "s16le", "-ar", String(rate), "-ac", String(channels), "-i", "pipe:0", "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1"]);

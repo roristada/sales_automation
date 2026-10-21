@@ -29,7 +29,8 @@ describe("voice-over pricing and voices", () => {
   });
 
   it("picks a default voice only where one is needed", () => {
-    expect(voiceFor(gemini.id, null)).toBe("Kore");
+    expect(voiceFor(gemini.id, null)).toBe("Puck");
+    expect(voiceFor(eleven.id, null)).toBe("21m00Tcm4TlvDq8ikWAM");
     expect(voiceFor(gemini.id, "Puck")).toBe("Puck");
     expect(voiceFor(free.id, null)).toBeNull();
     expect(speechText("  หูฟัง \n ดี  ")).toBe("หูฟัง ดี");
@@ -67,15 +68,18 @@ describe("speech client", () => {
     await expect(speak({ model: eleven.id, text: "x", fetchImpl: wrongType })).rejects.toThrow(/audio\/wav/);
   });
 
-  it("asks Gemini for PCM (it refuses mp3) and converts it to MP3 at the rate the header gives", async () => {
+  it("asks Gemini for PCM (it refuses mp3); the worker converts it to MP3 at the rate the header gives", async () => {
     // 0.5 s of silence, 16-bit mono at 24 kHz.
     const pcm = Buffer.alloc(24_000);
     const res = vi.fn<typeof fetch>(async () => new Response(pcm, { headers: { "Content-Type": "audio/pcm;rate=24000;channels=1" } }));
     const r = await speak({ model: gemini.id, text: "สวัสดี", voice: "Kore", fetchImpl: res });
     expect(JSON.parse(res.mock.calls[0][1]!.body as string)).toMatchObject({ response_format: "pcm" });
+    expect(r.contentType).toBe("audio/pcm;rate=24000;channels=1");
+    const { pcmFormat, speechToMp3 } = await import("./pcm");
+    const mp3 = await speechToMp3(r.audio, r.contentType);
     // An MP3 stream: ID3 tag or an MPEG frame sync.
-    expect(r.audio.subarray(0, 3).toString() === "ID3" || (r.audio[0] === 0xff && (r.audio[1] & 0xe0) === 0xe0)).toBe(true);
-    const { pcmFormat } = await import("./pcm");
+    expect(mp3.subarray(0, 3).toString() === "ID3" || (mp3[0] === 0xff && (mp3[1] & 0xe0) === 0xe0)).toBe(true);
+    expect(await speechToMp3(Buffer.from([1, 2]), "audio/mpeg")).toEqual(Buffer.from([1, 2]));
     expect(pcmFormat("audio/pcm;rate=44100;channels=2")).toEqual({ rate: 44100, channels: 2 });
     expect(pcmFormat("audio/pcm")).toEqual({ rate: 24000, channels: 1 });
   });

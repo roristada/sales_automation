@@ -108,6 +108,7 @@ export default async function VideoPage({ params }: { params: Promise<{ storyboa
         costThb: g.cost_thb === null ? null : Number(g.cost_thb),
         estThb: Number(g.est_cost_thb),
         error: g.error,
+        qualityNote: g.quality_note,
         createdAt: g.created_at,
       })),
     };

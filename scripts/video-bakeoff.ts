@@ -1,6 +1,6 @@
 /**
- * Video-model bake-off (docs/AI_VIDEO_PLAN.md AI-3): the same product photo (first frame) and
- * prompt sent to several OpenRouter video models. Saves each MP4 plus a frame sheet under
+ * Video-model bake-off (docs/AI_VIDEO_PLAN.md AI-3): the same product photo (first frame, fitted
+ * onto 9:16 exactly as the worker does) and prompt sent to several OpenRouter video models. Saves each MP4 plus a frame sheet under
  * storage/ai-bakeoff/clips/ and logs every job (with the cost OpenRouter reports) in ai_requests
  * under the product's owner, so it counts toward your spending caps.
  *
@@ -14,6 +14,7 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { usdToThb } from "../src/features/ai/models";
 import { downloadVideo, estimateVideoUsd, getVideoJob, listVideoModels, OpenRouterError, submitVideo } from "../src/features/ai/openrouter";
+import { portraitFrame } from "../src/features/video/frame";
 import type { Database } from "../src/lib/supabase/database.types";
 
 const DEFAULT_RUNS = ["google/veo-3.1-lite:6", "kwaivgi/kling-v3.0-std:5", "google/veo-3.1-fast:6"];
@@ -39,6 +40,9 @@ async function main() {
   const catalog = await listVideoModels();
   const dir = path.resolve("storage/ai-bakeoff/clips", new Date().toISOString().replace(/[:.]/g, "-"));
   mkdirSync(dir, { recursive: true });
+  const frame = await portraitFrame(Buffer.from(await (await fetch(imageUrl)).arrayBuffer()));
+  writeFileSync(path.join(dir, "first-frame.jpg"), frame);
+  const firstFrameUrl = `data:image/jpeg;base64,${frame.toString("base64")}`;
   const log = (model: string, status: "succeeded" | "failed", extra: { generationId?: string | null; seconds?: number; usd?: number; error?: string }) =>
     db.from("ai_requests").insert({
       owner_id: product.owner_id,
@@ -61,7 +65,7 @@ async function main() {
       const est = info ? estimateVideoUsd(info.pricing, seconds, true) : null;
       const started = Date.now();
       try {
-        const job = await submitVideo({ model, prompt: PROMPT, duration: seconds, aspectRatio: "9:16", resolution: "720p", firstFrameUrl: imageUrl });
+        const job = await submitVideo({ model, prompt: PROMPT, duration: seconds, aspectRatio: "9:16", resolution: "720p", firstFrameUrl });
         console.log(`${model}: submitted ${job.id} (est. ${est === null ? "?" : `฿${usdToThb(est).toFixed(2)}`})`);
         for (;;) {
           await new Promise((r) => setTimeout(r, POLL_MS));
