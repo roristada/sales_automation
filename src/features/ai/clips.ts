@@ -77,10 +77,7 @@ export function buildVisualPlanPrompt(productName: string, category: string | nu
 - prompt: an English prompt for an image-to-video model, one paragraph, under 400 characters: subject, action, camera movement, lighting, background. For "product_motion" scenes give an empty string.
 
 Rules:
-- Describe only what the facts below support. Never add features, colours, materials, accessories or text that aren't listed.
-- No real people's likeness, no celebrities, no brand logos other than the product's own, no on-screen text, no testimonials.
-- Keep the product as in the photo: do not change its shape, colour or parts.
-- People, if any, are generic adults; no children.
+${PROMPT_RULES}
 
 Product: ${productName}${category ? ` (${category})` : ""}
 Verified facts:
@@ -89,6 +86,71 @@ ${factLines}
 Scenes (${scenes.length}, answer for each, in order):
 ${sceneLines}`;
 }
+
+/** Rules every clip prompt follows, whoever writes it (planner, one-scene writer, presets). */
+const PROMPT_RULES = `- Describe only what the facts below support. Never add features, colours, materials, accessories or text that aren't listed.
+- No real people's likeness, no celebrities, no brand logos other than the product's own, no on-screen text, no testimonials.
+- Keep the product as in the photo: do not change its shape, colour or parts.
+- People, if any, are generic adults; no children.`;
+
+/**
+ * One scene's English image-to-video prompt, written by the scene-prompt model from the scene's
+ * line, the verified facts and (optionally) what the user wants in their own words, in Thai.
+ */
+export function buildScenePromptRequest(input: { productName: string; category: string | null; facts: PlanFact[]; scene: PlanScene; task: VideoTask; hint: string }): string {
+  const factLines = input.facts.length ? input.facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") : "(none)";
+  const kind =
+    input.task === "video_product"
+      ? "The clip starts from the product photo (first frame) and shows the product itself moving: rotation, close-up, light sweep, slow camera move. End the prompt with: Keep the product exactly as in the first frame: same shape, colours and parts. No text, no hands, no extra objects."
+      : "The clip shows a generic adult using the product, or a setting. Name the product's exact type and what it is NOT (e.g. small in-ear earphones … no over-ear headphones). End with: No text, no logos.";
+  return `Write ONE English prompt for an image-to-video model, for one scene of a short vertical (9:16) affiliate video for a Thai audience. One paragraph, under 400 characters: subject, action, camera movement, lighting, background.
+
+${kind}
+
+Rules:
+${PROMPT_RULES}
+- If the user's request below asks for something the facts don't support, leave that part out.
+
+Product: ${input.productName}${input.category ? ` (${input.category})` : ""}
+Verified facts:
+${factLines}
+
+The scene: [${input.scene.kindLabel}] spoken: ${input.scene.narration || "-"} | on screen: ${input.scene.on_screen_text || "-"}
+What the user wants (Thai, may be empty): ${input.hint.trim() || "-"}`;
+}
+
+export const SCENE_PROMPT_SCHEMA = {
+  name: "scene_prompt",
+  schema: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"], additionalProperties: false },
+};
+
+/** Ready-made prompts for common product shots: no AI call, no cost. */
+export const PROMPT_PRESETS: { id: string; label: string; task: VideoTask; prompt: string }[] = [
+  {
+    id: "turntable",
+    label: "หมุนโชว์ 360°",
+    task: "video_product",
+    prompt: "Slow 360-degree turntable rotation of the product from the first frame on a clean studio surface. Soft diffused lighting, gentle reflections, shallow depth of field. Keep the product exactly as in the first frame: same shape, colours and parts. No text, no hands, no extra objects.",
+  },
+  {
+    id: "macro",
+    label: "โคลสอัปรายละเอียด",
+    task: "video_product",
+    prompt: "Slow macro push-in on the product from the first frame, revealing its surface texture and details. Soft studio lighting, shallow depth of field, dark matte background. Keep the product exactly as in the first frame: same shape, colours and parts. No text, no hands, no extra objects.",
+  },
+  {
+    id: "light_sweep",
+    label: "แสงกวาดผ่าน",
+    task: "video_product",
+    prompt: "The product from the first frame stays still while a soft streak of light sweeps across it, highlighting its edges and materials. Dark studio background, subtle reflections, slow camera drift. Keep the product exactly as in the first frame: same shape, colours and parts. No text, no hands.",
+  },
+  {
+    id: "tabletop",
+    label: "วางบนโต๊ะ",
+    task: "video_product",
+    prompt: "The product from the first frame resting on a light wooden desk by a window, morning sunlight, a slow side camera slide. Cozy, clean setting. Keep the product exactly as in the first frame: same shape, colours and parts. No text, no hands, no extra products.",
+  },
+];
 
 export const VISUAL_PLAN_SCHEMA = {
   name: "visual_plan",

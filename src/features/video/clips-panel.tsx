@@ -12,10 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { VideoModel } from "@/features/ai/openrouter";
-import { AI_CLIP_LABEL, clipSpec, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
+import { AI_CLIP_LABEL, clipSpec, PROMPT_PRESETS, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
 import { TRANSITION_LABEL, type TransitionChoice, TRANSITIONS } from "./timeline";
 import { sceneKey } from "./scene-key";
-import { autoVisuals, cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
+import { autoVisuals, cancelSceneClip, planSceneVisuals, writeScenePrompt, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
 export interface ClipGeneration {
   id: string;
@@ -83,7 +83,7 @@ export function ClipsPanel({
       <ClipsToolbar storyboardId={storyboardId} scenes={scenes} aiReady={aiReady} approved={approved} />
       <ol className="flex flex-col gap-3">
         {scenes.map((s) => (
-          <SceneVisual key={sceneKey(s)} scene={s} approved={approved} reusable={reusable} choices={choices} usdThb={usdThb} hasFrame={hasFrame} />
+          <SceneVisual key={sceneKey(s)} scene={s} approved={approved} reusable={reusable} choices={choices} usdThb={usdThb} hasFrame={hasFrame} aiReady={aiReady} />
         ))}
       </ol>
     </div>
@@ -203,6 +203,7 @@ export function SceneVisual({
   usdThb,
   hasFrame,
   embedded = false,
+  aiReady = true,
 }: {
   scene: ClipScene;
   approved: boolean;
@@ -211,6 +212,8 @@ export function SceneVisual({
   usdThb: number;
   hasFrame: boolean;
   embedded?: boolean;
+  /** OpenRouter is set up: the AI can write prompts. */
+  aiReady?: boolean;
 }) {
   const router = useRouter();
   const [v, setV] = useState(scene.plan);
@@ -229,6 +232,21 @@ export function SceneVisual({
   const est = spec ? { model: modelId, seconds: spec.duration, thb: Math.round(spec.estUsd * usdThb * 100) / 100, priced: spec.priced } : null;
   const id = (k: string) => `clip-${scene.id}-${k}`;
   const [open, setOpen] = useState(false);
+  const [hint, setHint] = useState("");
+  /** The scene-prompt model writes this scene's prompt (saving any other unsaved change first). */
+  const writePrompt = (wish: string, task: VideoTask) =>
+    start(async () => {
+      setError(null);
+      if (dirty) {
+        const saved = await saveScenePlan(scene.id, { ...v, video_task: task }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+        if (!saved.ok) return setError(saved.error);
+      }
+      const res = await writeScenePrompt(scene.id, { hint: wish, task }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      if (!res.ok) return setError(res.error);
+      toast.success(`AI เขียน prompt ให้แล้ว (฿${res.data.costThb.toFixed(4)})`);
+      setHint("");
+      router.refresh();
+    });
   // Why "สร้างคลิป AI" can't be pressed yet (the button stays visible so it can be found).
   const genBlock = !approved
     ? "อนุมัติสคริปต์ก่อน จึงจะสร้างคลิปได้"
@@ -305,12 +323,15 @@ export function SceneVisual({
               type="button"
               size="sm"
               variant="outline"
+              disabled={pending}
               onClick={() => {
+                // With AI available the prompt is written right away; otherwise type or pick one.
+                if (aiReady) return writePrompt("", v.video_task);
                 setV({ ...v, mode: "ai_video" });
                 setOpen(true);
               }}
             >
-              ใช้คลิป AI ในฉากนี้
+              {pending ? "AI กำลังเขียน prompt…" : "ใช้คลิป AI ในฉากนี้"}
             </Button>
           )}
         </div>
@@ -373,7 +394,29 @@ export function SceneVisual({
               </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={id("prompt")}>Prompt (ภาษาอังกฤษ)</Label>
+              <span className="text-xs font-medium">ท่าสำเร็จรูป (ฟรี)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {PROMPT_PRESETS.filter((p) => p.task === v.video_task).map((p) => (
+                  <Button key={p.id} type="button" size="sm" variant="outline" disabled={pending} onClick={() => setV({ ...v, prompt: p.prompt })}>
+                    {p.label}
+                  </Button>
+                ))}
+                {v.video_task !== "video_product" && <span className="text-xs text-muted-foreground">ท่าสำเร็จรูปมีสำหรับ “สินค้าเคลื่อนไหว” — ฉากคนใช้งานให้ AI เขียนด้านล่าง</span>}
+              </div>
+            </div>
+            {aiReady && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <Label htmlFor={id("hint")}>อยากได้ภาพแบบไหน (ภาษาไทยได้ ไม่ใส่ก็ได้)</Label>
+                  <Input id={id("hint")} value={hint} maxLength={300} onChange={(e) => setHint(e.target.value)} placeholder="เช่น หมุนโชว์ท่อนำเสียงสีทองใกล้ๆ บนโต๊ะไม้" />
+                </div>
+                <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => writePrompt(hint, v.video_task)}>
+                  <Sparkles aria-hidden /> {pending ? "กำลังเขียน…" : "ให้ AI เขียน prompt (≈ ฿0.01)"}
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={id("prompt")}>Prompt (ภาษาอังกฤษ — AI เขียนให้ หรือแก้เองได้)</Label>
               <Textarea id={id("prompt")} rows={3} maxLength={MAX_PROMPT_CHARS} value={v.prompt} onChange={(e) => setV({ ...v, prompt: e.target.value })} placeholder="e.g. Slow 360° rotation of the earbuds on a white marble surface, soft studio light, shallow depth of field" />
             </div>
             <div className="flex flex-wrap items-end gap-3">

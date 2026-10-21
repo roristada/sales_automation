@@ -57,14 +57,14 @@ test("plan an AI clip, render only with an approved clip, caption notes AI image
   await expect(clips.getByRole("button", { name: "ให้ AI วางแผนภาพทุกฉาก" })).toBeVisible();
   const first = clips.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 1" }) });
   await first.getByLabel("ภาพของฉากนี้").selectOption("ai_video");
-  await first.getByLabel("Prompt (ภาษาอังกฤษ)").fill("Slow rotation of the earbuds on a white surface, soft studio light");
+  await first.getByLabel(/^Prompt/).fill("Slow rotation of the earbuds on a white surface, soft studio light");
   await first.getByRole("button", { name: "บันทึกแผนภาพ" }).click();
   await expect(page.getByText("บันทึกแผนภาพแล้ว")).toBeVisible();
 
   await page.reload();
   const again = page.getByRole("region", { name: "คลิป AI ต่อฉาก" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "ฉากที่ 1" }) });
   await expect(again.getByLabel("ภาพของฉากนี้")).toHaveValue("ai_video");
-  await expect(again.getByLabel("Prompt (ภาษาอังกฤษ)")).toHaveValue(/Slow rotation/);
+  await expect(again.getByLabel(/^Prompt/)).toHaveValue(/Slow rotation/);
   await expect(again.getByText(/kwaivgi\/kling-v3\.0-std · 5 วิ · ประมาณ ฿\d/)).toBeVisible();
   await expect(again.getByRole("button", { name: "สร้างคลิป AI" })).toBeVisible();
 

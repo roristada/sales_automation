@@ -118,3 +118,26 @@ describe("visual levels (one choice per video)", () => {
     expect(p1).toMatch(/prefer the opening scene/);
   });
 });
+
+describe("scene prompts without typing English", () => {
+  it("asks for one English prompt from the scene, the facts and the user's Thai wish", async () => {
+    const { buildScenePromptRequest, SCENE_PROMPT_SCHEMA, PROMPT_PRESETS } = await import("./clips");
+    const p = buildScenePromptRequest({
+      productName: "KEFINE Klean SV",
+      category: null,
+      facts: [{ label: "ท่อนำเสียง", value: "เปลี่ยนได้ 3 แบบ" }],
+      scene: { kindLabel: "จุดเด่น", narration: "ท่อนำเสียงถอดเปลี่ยนได้ 3 แบบ", on_screen_text: "" },
+      task: "video_product",
+      hint: "หมุนโชว์ท่อนำเสียงสีทอง",
+    });
+    expect(p).toContain("- ท่อนำเสียง: เปลี่ยนได้ 3 แบบ");
+    expect(p).toContain("หมุนโชว์ท่อนำเสียงสีทอง");
+    expect(p).toMatch(/Keep the product exactly as in the first frame/);
+    expect(p).toMatch(/Never add features/);
+    expect(buildScenePromptRequest({ productName: "x", category: null, facts: [], scene: { kindLabel: "k", narration: "n", on_screen_text: "" }, task: "video_lifestyle", hint: "" })).toMatch(/what it is NOT/);
+    expect(SCENE_PROMPT_SCHEMA.schema.required).toEqual(["prompt"]);
+    // Presets are product shots that keep the product as photographed.
+    expect(PROMPT_PRESETS.length).toBeGreaterThan(2);
+    for (const preset of PROMPT_PRESETS) expect(preset.prompt).toMatch(/Keep the product exactly as in the first frame/);
+  });
+});

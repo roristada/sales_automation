@@ -48,6 +48,10 @@ export function VideoSettings({
   const [voiceName, setVoiceName] = useState(voice);
   const [level, setLevel] = useState<VisualLevel>(visualLevel);
   const [seconds, setSeconds] = useState(targetSeconds);
+  const lifestyle = choices.find((c) => c.task === "video_lifestyle");
+  // One clip model unless the two clip tasks were set apart (then both selects show).
+  const [split, setSplit] = useState(() => (values.video_product ?? "") !== (values.video_lifestyle ?? ""));
+  const shown = choices.filter((c) => split || c.task !== "video_lifestyle");
   const dirty = choices.some((c) => values[c.task] !== c.value) || voiceName !== voice || level !== visualLevel || seconds !== targetSeconds;
 
   const save = () =>
@@ -91,11 +95,19 @@ export function VideoSettings({
         </div>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {choices.map((c) => (
+        {shown.map((c) => (
           <div key={c.task} className="flex min-w-0 flex-col gap-1.5 text-[13px]">
-            <Label htmlFor={`vs-${c.task}`}>{c.label}</Label>
-            <NativeSelect id={`vs-${c.task}`} value={values[c.task]} onChange={(e) => setValues({ ...values, [c.task]: e.target.value })} className="w-full min-w-0">
-              <option value="">ค่าเริ่มต้น ({c.defaultModel})</option>
+            <Label htmlFor={`vs-${c.task}`}>{!split && c.task === "video_product" ? "โมเดลคลิป AI (ทุกฉาก)" : c.label}</Label>
+            <NativeSelect
+              id={`vs-${c.task}`}
+              value={values[c.task]}
+              onChange={(e) =>
+                // One model for every AI clip: both clip tasks follow the one select.
+                setValues(!split && c.task === "video_product" ? { ...values, video_product: e.target.value, video_lifestyle: e.target.value } : { ...values, [c.task]: e.target.value })
+              }
+              className="w-full min-w-0"
+            >
+              <option value="">ค่าเริ่มต้น ({!split && c.task === "video_product" && lifestyle && lifestyle.defaultModel !== c.defaultModel ? `${c.defaultModel} / ${lifestyle.defaultModel}` : c.defaultModel})</option>
               {c.options
                 .filter((o) => o.id !== c.defaultModel)
                 .map((o) => (
@@ -105,6 +117,11 @@ export function VideoSettings({
                 ))}
               {values[c.task] && !c.options.some((o) => o.id === values[c.task]) && <option value={values[c.task]}>{values[c.task]} (ไม่พบใน catalog)</option>}
             </NativeSelect>
+            {c.task === "video_product" && (
+              <button type="button" className="self-start text-xs text-primary hover:underline" onClick={() => setSplit(!split)}>
+                {split ? "ใช้โมเดลเดียวทุกฉาก" : "แยกโมเดลตามแบบคลิป (สินค้า / คนใช้งาน)"}
+              </button>
+            )}
           </div>
         ))}
         <div className="flex min-w-0 flex-col gap-1.5 text-[13px]">

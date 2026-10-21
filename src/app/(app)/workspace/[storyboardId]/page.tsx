@@ -108,7 +108,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ stor
   const status = stepStatuses(state);
   const next = nextStep(state);
   const sceneExtras = Object.fromEntries(
-    d.clipScenes.map((s) => [s.id, <SceneVisual key={sceneKey(s)} scene={s} approved={locked} reusable={d.reusable} choices={d.videoChoices} usdThb={d.usdThb} hasFrame={d.hasFrame} embedded />]),
+    d.clipScenes.map((s) => [s.id, <SceneVisual key={sceneKey(s)} scene={s} approved={locked} reusable={d.reusable} choices={d.videoChoices} usdThb={d.usdThb} hasFrame={d.hasFrame} aiReady={aiReady} embedded />]),
   );
 
   return (

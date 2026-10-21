@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { checkAiSpend } from "@/features/ai/budget";
 import {
+  buildScenePromptRequest,
   buildVisualPlanPrompt,
   capAiScenes,
   clipBlocker,
@@ -12,6 +13,7 @@ import {
   DEFAULT_VISUAL_LEVEL,
   MAX_PROMPT_CHARS,
   parseVisualPlanJson,
+  SCENE_PROMPT_SCHEMA,
   VIDEO_TASK_LABEL,
   VIDEO_TASKS,
   VISUAL_LEVEL,
@@ -151,6 +153,51 @@ export async function planSceneVisuals(storyboardId: string): Promise<ActionResu
   const res = await planVisuals(supabase, user.id, storyboardId, Math.max(1, VISUAL_LEVEL[level].maxAiScenes));
   if (res.ok) revalidateVideo(storyboardId);
   return res;
+}
+
+const writePromptSchema = z.object({ hint: z.string().trim().max(300, "ยาวเกิน 300 ตัวอักษร"), task: z.enum(VIDEO_TASKS).optional() });
+
+/**
+ * One scene's English prompt by the scene-prompt model (≈ ฿0.01): from the scene's line, the
+ * verified facts and the user's wish in Thai, if any. The scene becomes an AI-clip scene with it;
+ * its length, transition and model stay as saved.
+ */
+export async function writeScenePrompt(sceneId: string, input: z.input<typeof writePromptSchema>): Promise<ActionResult<{ prompt: string; costThb: number }>> {
+  const parsed = writePromptSchema.safeParse(input);
+  if (!uuid.safeParse(sceneId).success || !parsed.success) return { ok: false, error: parsed.error?.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  if (!isOpenRouterConfigured()) return { ok: false, error: "ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY — เลือกท่าสำเร็จรูป หรือพิมพ์ prompt เอง" };
+  const { supabase, user } = await requireUser();
+  const scene = await sceneWithStoryboard(supabase, sceneId);
+  if (!scene?.storyboard.project) return { ok: false, error: "ไม่พบฉาก" };
+  const [{ data: row }, { data: plan }, { data: product }] = await Promise.all([
+    supabase.from("storyboard_scenes").select("kind, narration, on_screen_text").eq("id", sceneId).single(),
+    supabase.from("scene_visual_plans").select("video_task, duration_s, transition, model").eq("scene_id", sceneId).maybeSingle(),
+    supabase.from("products").select(PRODUCT_COLUMNS).eq("id", scene.storyboard.project.product_id).maybeSingle(),
+  ]);
+  if (!row || !product) return { ok: false, error: "ไม่พบฉาก" };
+  const { facts } = await loadFacts(supabase, product);
+  const usable = facts.filter((f) => f.value && !["ai_estimate", "unavailable", "stale"].includes(f.status) && f.key !== "field:description").map((f) => ({ label: f.label, value: f.value!.slice(0, 300) }));
+  const task = parsed.data.task ?? ((plan?.video_task as (typeof VIDEO_TASKS)[number] | undefined) ?? "video_product");
+  const content = buildScenePromptRequest({
+    productName: product.name,
+    category: product.category,
+    facts: usable,
+    scene: { kindLabel: SCENE_KIND_LABEL[row.kind] ?? row.kind, narration: row.narration, on_screen_text: row.on_screen_text },
+    task,
+    hint: parsed.data.hint,
+  });
+  const run = await runAiChat(supabase, user.id, { task: "scene_prompt", messages: [{ role: "user", content }], schema: SCENE_PROMPT_SCHEMA, maxTokens: 1500, temperature: 0.5, productId: product.id, storyboardId: scene.storyboard_id });
+  if (!run.ok) return { ok: false, error: run.error };
+  const reply = parseJsonReply(run.result.text) as { prompt?: unknown } | null;
+  const prompt = typeof reply?.prompt === "string" ? reply.prompt.trim().slice(0, MAX_PROMPT_CHARS) : "";
+  if (!prompt) return { ok: false, error: `AI ไม่ได้ส่ง prompt กลับมา ลองใหม่อีกครั้ง (ค่าใช้จ่ายครั้งนี้ ฿${run.costThb.toFixed(4)})` };
+  const { error } = await supabase.from("scene_visual_plans").upsert(
+    { scene_id: sceneId, owner_id: user.id, storyboard_id: scene.storyboard_id, mode: "ai_video", video_task: task, prompt, duration_s: plan?.duration_s ?? DEFAULT_CLIP_SECONDS, transition: plan?.transition ?? "auto", model: plan?.model ?? null },
+    { onConflict: "scene_id" },
+  );
+  if (error) return { ok: false, error: `บันทึกไม่สำเร็จ: ${error.message}` };
+  revalidateVideo(scene.storyboard_id);
+  return { ok: true, data: { prompt, costThb: run.costThb } };
 }
 
 interface ClipRequest {

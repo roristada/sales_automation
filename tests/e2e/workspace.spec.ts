@@ -60,14 +60,18 @@ test("one page per video: photos, settings, facts, script + visuals, render", as
   // 2. This video's AI picks (default from Settings), saved and kept.
   if (env("OPENROUTER_API_KEY")) {
     await expect(page.getByLabel("ความยาวเป้าหมาย")).toHaveValue("15");
-    const clipModel = page.getByLabel("คลิปสินค้าเคลื่อนไหว");
+    // One select for every AI clip by default; both clip tasks follow it.
+    const clipModel = page.getByLabel("โมเดลคลิป AI (ทุกฉาก)");
     await expect(clipModel).toHaveValue("");
-    await expect(clipModel.locator("option").first()).toHaveText("ค่าเริ่มต้น (kwaivgi/kling-v3.0-std)");
+    await expect(page.getByLabel("คลิปคนใช้งาน/บรรยากาศ")).toHaveCount(0);
     await clipModel.selectOption("google/veo-3.1-lite");
     await page.getByRole("button", { name: "บันทึกการตั้งค่าของวิดีโอนี้" }).click();
     await expect(page.getByText("บันทึกการตั้งค่าของวิดีโอนี้แล้ว")).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel("คลิปสินค้าเคลื่อนไหว")).toHaveValue("google/veo-3.1-lite");
+    await expect(page.getByLabel("โมเดลคลิป AI (ทุกฉาก)")).toHaveValue("google/veo-3.1-lite");
+    // Split on request: the lifestyle task got the same model.
+    await page.getByRole("button", { name: "แยกโมเดลตามแบบคลิป (สินค้า / คนใช้งาน)" }).click();
+    await expect(page.getByLabel("คลิปคนใช้งาน/บรรยากาศ")).toHaveValue("google/veo-3.1-lite");
   }
 
   // 3. Facts on the same page.
@@ -83,8 +87,13 @@ test("one page per video: photos, settings, facts, script + visuals, render", as
   // One summary line; the details sit behind "ปรับเอง".
   await expect(card.getByText("รูปสินค้า + motion graphics (ฟรี)")).toBeVisible();
   await expect(card.getByLabel("ภาพของฉากนี้")).toBeHidden();
-  await card.getByRole("button", { name: "ใช้คลิป AI ในฉากนี้" }).click();
-  await expect(card.getByLabel("ภาพของฉากนี้")).toHaveValue("ai_video");
+  // ("ใช้คลิป AI ในฉากนี้" has the AI write the prompt, a paid call: set it by hand here.)
+  await card.getByText("ปรับเอง (โหมดภาพ โมเดล prompt ความยาว ทรานซิชัน)").click();
+  await card.getByLabel("ภาพของฉากนี้").selectOption("ai_video");
+  // A ready-made shot fills the English prompt for free.
+  await card.getByRole("button", { name: "หมุนโชว์ 360°" }).click();
+  await expect(card.getByLabel(/^Prompt/)).toHaveValue(/turntable rotation/);
+  // Not saved on purpose: the "ประหยัด" one-click step below plans this video from scratch.
   // The create button is always there, with the reason it can't be pressed yet.
   await expect(card.getByRole("button", { name: "สร้างคลิป AI" })).toBeDisabled();
   await expect(card.getByText("อนุมัติสคริปต์ก่อน จึงจะสร้างคลิปได้")).toBeVisible();
