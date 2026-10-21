@@ -81,6 +81,8 @@ export interface VideoProps {
   hook: string;
   hookDuration: number;
   cta: string;
+  /** Short button label for the end card: the CTA scene's on-screen text, else the CTA's first words. */
+  ctaLabel: string;
   disclosure: string;
   scenes: TimelineScene[];
   cues: SubtitleCue[];
@@ -172,12 +174,26 @@ export function buildTimeline(input: TimelineInput, fps: number = VIDEO.fps): Vi
     hook: input.hook,
     hookDuration: Math.min(toFrames(HOOK_SECONDS, fps), firstScene || toFrames(HOOK_SECONDS, fps)),
     cta: input.cta,
+    ctaLabel: ctaLabel(input.cta, [...input.scenes].reverse().find((s) => s.kind === "cta")?.on_screen_text ?? ""),
     disclosure: input.disclosure,
     scenes,
     cues,
     endCard,
     music: input.music ?? null,
   };
+}
+
+/** A CTA short enough for a one-line button (~22 characters). */
+export function ctaLabel(cta: string, sceneText: string): string {
+  const own = sceneText.trim();
+  if (own && own.length <= 26) return own;
+  const words = (own || cta).replace(/\s+/g, " ").trim().split(" ");
+  let out = "";
+  for (const w of words) {
+    if (out && (out + " " + w).length > 22) break;
+    out = out ? `${out} ${w}` : w;
+  }
+  return out;
 }
 
 function stamp(frames: number, fps: number, sep: "," | ".") {

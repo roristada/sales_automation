@@ -1,7 +1,7 @@
 import { loadFont } from "@remotion/google-fonts/NotoSansThai";
 import { AbsoluteFill, Html5Audio, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { fitFontSize, SAFE, splitLabel, TEXT_WIDTH, words, ZONES } from "@/features/video/layout";
-import { type SceneMedia, type TimelineScene, type Transition, TRANSITION_FRAMES, type VideoProps } from "@/features/video/timeline";
+import { fitFontSize, SAFE, splitLabel, TEXT_WIDTH, textWidth, words, ZONES } from "@/features/video/layout";
+import { ctaLabel, type SceneMedia, type TimelineScene, type Transition, TRANSITION_FRAMES, type VideoProps } from "@/features/video/timeline";
 
 /*
  * 1080×1920 vertical affiliate video. Every text block has its own zone (layout.ts) and a font
@@ -200,16 +200,18 @@ function CtaButton({ text }: { text: string }) {
   const enter = spring({ frame, fps, config: { damping: 12 }, durationInFrames: 16 });
   const pulse = 1 + Math.max(0, Math.sin(frame / 6)) * 0.05;
   const nudge = Math.abs(Math.sin(frame / 5)) * 14;
-  const size = fitFontSize(text, { maxWidth: TEXT_WIDTH - 200, maxHeight: 180, sizes: [68, 58, 50, 42], padding: 40 });
+  // One line: the size that fits the width (the label is kept short by ctaLabel).
+  const size = [68, 60, 52, 46, 40].find((s) => textWidth(text, s) + s * 1.4 + 80 <= TEXT_WIDTH - 40) ?? 40;
   return (
-    <TextZone>
-      <div style={{ display: "flex", alignItems: "center", gap: 18, fontFamily, fontWeight: 800, fontSize: size, color: C.ink, background: C.accent, padding: "20px 40px", borderRadius: 999, boxShadow: `0 0 0 ${8 * (pulse - 1) * 20}px rgba(250,204,21,0.25), 0 24px 60px rgba(0,0,0,0.4)`, transform: `scale(${enter * pulse})` }}>
+    // Own zone without clipping: the pulse ring and shadow must not be cut into a box.
+    <div style={{ position: "absolute", top: ZONES.text.top, height: ZONES.text.height, left: SAFE.side, width: TEXT_WIDTH, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, whiteSpace: "nowrap", fontFamily, fontWeight: 800, fontSize: size, color: C.ink, background: C.accent, padding: "18px 40px", borderRadius: 999, boxShadow: `0 0 0 ${8 * (pulse - 1) * 20}px rgba(250,204,21,0.25), 0 16px 40px rgba(0,0,0,0.3)`, transform: `scale(${enter * pulse})` }}>
         <span>{text}</span>
         <svg width={size * 0.8} height={size * 0.8} viewBox="0 0 24 24" style={{ transform: `translateY(${nudge * 0.4}px)` }} aria-hidden>
           <path d="M12 4v13m0 0-6-6m6 6 6-6" stroke={C.ink} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
-    </TextZone>
+    </div>
   );
 }
 
@@ -279,7 +281,7 @@ function SceneText({ scene }: { scene: TimelineScene }) {
   if (!text) return null;
   if (scene.media) return <MediaCaption text={text} />;
   if (scene.kind === "price") return <PriceTag text={text} />;
-  if (scene.kind === "cta") return <CtaButton text={text} />;
+  if (scene.kind === "cta") return <CtaButton text={ctaLabel(text, text)} />;
   const spec = scene.kind === "feature" ? splitLabel(text) : null;
   return spec ? <SpecCallout label={spec.label} value={spec.value} /> : <OnScreenText text={text} />;
 }
@@ -352,7 +354,7 @@ export function AffiliateVideo(props: VideoProps) {
       <Sequence from={props.endCard.from} durationInFrames={props.endCard.duration} name="end card">
         <Enter transition="fade">
           <ProductCard imageSrc={main} productName={props.productName} duration={props.endCard.duration} index={0} />
-        {props.cta && <CtaButton text={props.cta} />}
+        {props.ctaLabel && <CtaButton text={props.ctaLabel} />}
         </Enter>
       </Sequence>
       {props.music && <Html5Audio src={props.music.src} volume={props.music.volume} loop name="music" />}

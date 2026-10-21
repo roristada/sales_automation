@@ -186,3 +186,13 @@ describe("transitions", () => {
     expect(t.scenes.map((s) => [s.from, s.duration])).toEqual(plain.scenes.map((s) => [s.from, s.duration]));
   });
 });
+
+describe("end card button", () => {
+  it("uses the CTA scene's short text, else the CTA's first words, so it fits one line", async () => {
+    const { ctaLabel } = await import("./timeline");
+    expect(ctaLabel("กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย", "กดตะกร้าดูราคา")).toBe("กดตะกร้าดูราคา");
+    expect(ctaLabel("กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย", "")).toBe("กดตะกร้าดูราคาล่าสุด");
+    expect(ctaLabel("x", "กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่ง").length).toBeLessThanOrEqual(22);
+  });
+});
+
