@@ -43,6 +43,9 @@ test("content planning flow", async ({ page }) => {
   await expect(page.getByLabel(/^สินค้า/)).toHaveValue(/[0-9a-f-]{36}/);
   await expect(page.getByText("ข้อเท็จจริง 2 ข้อ")).toBeVisible();
   await page.getByRole("radio", { name: "รีวิวสั้น" }).check();
+  // New projects default to 15 s (one feature); 30 s fits both facts as features.
+  await expect(page.getByLabel("ความยาวเป้าหมาย")).toHaveValue("15");
+  await page.getByLabel("ความยาวเป้าหมาย").selectOption("30");
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
   await expect(page).toHaveURL(/\/studio\/[0-9a-f-]{36}$/);
   const studioUrl = page.url();

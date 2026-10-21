@@ -27,6 +27,8 @@ export const PLATFORMS = ["tiktok", "reels", "shorts"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export const PLATFORM_LABEL: Record<Platform, string> = { tiktok: "TikTok", reels: "Instagram Reels", shorts: "YouTube Shorts" };
 export const DURATIONS = [15, 30, 45, 60] as const;
+/** Preselected length: shoppable TikTok reviews mostly run ~15–35 s, and shorter costs less AI. */
+export const DEFAULT_DURATION: (typeof DURATIONS)[number] = 15;
 
 export const DISCLOSURE = "#ได้รับค่าคอมมิชชัน ลิงก์ในคลิปเป็นลิงก์ affiliate ผู้ทำคลิปอาจได้รับค่าคอมมิชชันเมื่อมีการซื้อผ่านลิงก์";
 

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { type CreateProjectState, createContentProject } from "./actions";
-import { DURATIONS, PLATFORM_LABEL, PLATFORMS } from "./templates";
+import { DEFAULT_DURATION, DURATIONS, PLATFORM_LABEL, PLATFORMS } from "./templates";
 
 export interface ProductOption {
   id: string;
@@ -123,7 +123,7 @@ export function NewProjectForm({ products, templates, initialProductId }: { prod
           </Field>
           <Field id="target_duration_s" label="ความยาวเป้าหมาย" required error={state.fieldErrors?.target_duration_s} hint="วิดีโอแนวตั้ง 9:16">
             {(a11y) => (
-              <NativeSelect {...a11y} name="target_duration_s" defaultValue="30" className="w-full">
+              <NativeSelect {...a11y} name="target_duration_s" defaultValue={String(DEFAULT_DURATION)} className="w-full">
                 {DURATIONS.map((d) => (
                   <option key={d} value={d}>
                     {d} วินาที

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { createBatch } from "./batch-actions";
 import { MAX_BATCH_PRODUCTS } from "./batch";
 import type { ProductOption, TemplateOption } from "./new-project-form";
-import { DURATIONS, type Platform, PLATFORM_LABEL, PLATFORMS } from "./templates";
+import { DEFAULT_DURATION, DURATIONS, type Platform, PLATFORM_LABEL, PLATFORMS } from "./templates";
 
 /** "สร้างหลายวิดีโอ": products → template, platform, length → AI script (optional, with a budget). */
 export function BatchForm({ products, templates, aiReady }: { products: ProductOption[]; templates: TemplateOption[]; aiReady: boolean }) {
@@ -19,7 +19,7 @@ export function BatchForm({ products, templates, aiReady }: { products: ProductO
   const [picked, setPicked] = useState<string[]>([]);
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
   const [platform, setPlatform] = useState<Platform>("tiktok");
-  const [duration, setDuration] = useState<number>(30);
+  const [duration, setDuration] = useState<number>(DEFAULT_DURATION);
   const [useAi, setUseAi] = useState(aiReady);
   const [budget, setBudget] = useState("5");
   const template = templates.find((t) => t.id === templateId);
