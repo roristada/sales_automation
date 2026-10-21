@@ -34,7 +34,7 @@ export async function runAiChat(
   input: { task: AiTask; messages: ChatInput["messages"]; schema?: ChatInput["schema"]; maxTokens: number; temperature?: number; productId?: string | null; storyboardId?: string | null; confirmed?: boolean },
 ): Promise<AiRun> {
   if (!isOpenRouterConfigured()) return { ok: false, error: "ยังไม่ได้ตั้งค่า AI ผ่าน API — ใส่ OPENROUTER_API_KEY ใน .env.local (หรือใช้ปุ่มคัดลอกคำสั่งไปแชท AI แทน)" };
-  const settings = await getAiSettings(supabase);
+  const settings = await getAiSettings(supabase, { storyboardId: input.storyboardId });
   const model = modelFor(input.task, settings.models);
   const [{ data: limits }, { data: spent }, videoSpent, estimate] = await Promise.all([
     supabase.from("spending_limits").select("daily_thb, monthly_thb").maybeSingle(),

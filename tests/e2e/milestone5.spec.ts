@@ -76,7 +76,9 @@ test("assets, usage and spending cap", async ({ page }) => {
   await page.getByRole("radio", { name: "แจ้งราคา" }).check();
   await page.getByLabel("ความยาวเป้าหมาย").selectOption("15");
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
-  await expect(page).toHaveURL(/\/studio\//);
+  // New content opens in the video workspace; this test drives Script Studio itself.
+  await expect(page).toHaveURL(/\/workspace\//);
+  await page.goto(page.url().replace("/workspace/", "/studio/"));
 
   const pick = async (scene: number, name: string) => {
     await page.getByRole("button", { name: `เลือกภาพสำหรับฉากที่ ${scene}` }).click();

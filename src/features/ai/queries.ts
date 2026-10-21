@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { type AiSpendSettings, DEFAULT_AI_SPEND } from "./budget";
-import { type AiTask, parseModelPicks, usdToThb } from "./models";
+import { type AiOverrides, type AiTask, parseAiOverrides, parseModelPicks, usdToThb } from "./models";
 import { type ChatResult, getKeyInfo, isOpenRouterConfigured, type KeyInfo, listSpeechModels, listTextModels, listVideoModels, OpenRouterError, type SpeechModel, type TextModel, type VideoModel } from "./openrouter";
 
 type Db = SupabaseClient<Database>;
@@ -14,15 +14,31 @@ export interface AiSettings extends AiSpendSettings {
   ttsVoice: string | null;
 }
 
-export async function getAiSettings(supabase: Db): Promise<AiSettings> {
-  const { data } = await supabase.from("ai_settings").select("models, per_video_cap_thb, confirm_over_thb, tts_voice").maybeSingle();
-  if (!data) return { models: {}, ttsVoice: null, ...DEFAULT_AI_SPEND };
-  return {
-    models: parseModelPicks(data.models),
-    ttsVoice: data.tts_voice,
-    per_video_cap_thb: data.per_video_cap_thb === null ? null : Number(data.per_video_cap_thb),
-    confirm_over_thb: Number(data.confirm_over_thb),
-  };
+/**
+ * The owner's AI settings. With a storyboard, that video's own picks (its project's
+ * ai_overrides, set in the video workspace) take precedence over the Settings defaults.
+ */
+export async function getAiSettings(supabase: Db, opts: { storyboardId?: string | null } = {}): Promise<AiSettings> {
+  const [{ data }, overrides] = await Promise.all([
+    supabase.from("ai_settings").select("models, per_video_cap_thb, confirm_over_thb, tts_voice").maybeSingle(),
+    opts.storyboardId ? getVideoOverrides(supabase, opts.storyboardId) : Promise.resolve(null),
+  ]);
+  const base: AiSettings = data
+    ? {
+        models: parseModelPicks(data.models),
+        ttsVoice: data.tts_voice,
+        per_video_cap_thb: data.per_video_cap_thb === null ? null : Number(data.per_video_cap_thb),
+        confirm_over_thb: Number(data.confirm_over_thb),
+      }
+    : { models: {}, ttsVoice: null, ...DEFAULT_AI_SPEND };
+  if (!overrides) return base;
+  return { ...base, models: { ...base.models, ...overrides.models }, ttsVoice: overrides.ttsVoice ?? base.ttsVoice };
+}
+
+/** A video's own AI picks (none = the Settings defaults apply). */
+export async function getVideoOverrides(supabase: Db, storyboardId: string): Promise<AiOverrides | null> {
+  const { data } = await supabase.from("storyboards").select("project:content_projects(ai_overrides)").eq("id", storyboardId).maybeSingle();
+  return data?.project ? parseAiOverrides(data.project.ai_overrides) : null;
 }
 
 export type AccountStatus = { state: "not_configured" } | { state: "connected"; key: KeyInfo } | { state: "error"; message: string };

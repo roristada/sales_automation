@@ -53,7 +53,9 @@ test("AI buttons call the API directly; whole-script draft is previewed, applied
   await page.getByRole("link", { name: "สร้างคอนเทนต์" }).first().click();
   await page.getByRole("radio", { name: "รีวิวสั้น" }).check();
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
-  await expect(page).toHaveURL(/\/studio\/[0-9a-f-]{36}$/);
+  // New content opens in the video workspace; this test drives Script Studio itself.
+  await expect(page).toHaveURL(/\/workspace\/[0-9a-f-]{36}$/);
+  await page.goto(page.url().replace("/workspace/", "/studio/"));
   const scenes = page.getByRole("heading", { name: /^ฉากที่ \d/ });
   const sceneCount = await scenes.count();
 

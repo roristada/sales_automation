@@ -72,7 +72,7 @@ export default async function ContentPage() {
                 <Tr key={p.id}>
                   <Td className="max-w-[420px]">
                     {latest ? (
-                      <Link href={`/studio/${latest.id}`} className="line-clamp-2 font-medium hover:underline">
+                      <Link href={`/workspace/${latest.id}`} className="line-clamp-2 font-medium hover:underline">
                         {p.title}
                       </Link>
                     ) : (

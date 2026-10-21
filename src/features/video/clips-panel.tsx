@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { VideoModel } from "@/features/ai/openrouter";
 import { AI_CLIP_LABEL, clipSpec, GENERATION_STATUS_LABEL, MAX_PROMPT_CHARS, VIDEO_TASK_LABEL, VIDEO_TASKS, type VideoTask, VISUAL_MODE_LABEL, VISUAL_MODES, type VisualMode } from "@/features/ai/clips";
 import { TRANSITION_LABEL, type TransitionChoice, TRANSITIONS } from "./timeline";
+import { sceneKey } from "./scene-key";
 import { cancelSceneClip, planSceneVisuals, queueSceneClip, reuseSceneClip, reviewSceneClip, saveScenePlan } from "./clip-actions";
 
 export interface ClipGeneration {
@@ -77,6 +78,20 @@ export function ClipsPanel({
   /** The product has a photo URL to use as the first frame. */
   hasFrame: boolean;
 }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <ClipsToolbar storyboardId={storyboardId} scenes={scenes} aiReady={aiReady} approved={approved} />
+      <ol className="flex flex-col gap-3">
+        {scenes.map((s) => (
+          <SceneVisual key={sceneKey(s)} scene={s} approved={approved} reusable={reusable} choices={choices} usdThb={usdThb} hasFrame={hasFrame} />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** "ให้ AI วางแผนภาพทุกฉาก", notices, and a refresh while clips are generating. */
+export function ClipsToolbar({ storyboardId, scenes, aiReady, approved }: { storyboardId: string; scenes: ClipScene[]; aiReady: boolean; approved: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -110,16 +125,31 @@ export function ClipsPanel({
       </div>
       {!approved && <Notice tone="warning">อนุมัติสคริปต์ก่อน จึงจะสร้างคลิป AI ได้ (วางแผนภาพไว้ก่อนได้)</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
-      <ol className="flex flex-col gap-3">
-        {scenes.map((s) => (
-          <SceneClip key={`${s.id}-${s.plan.mode}-${s.plan.video_task}-${s.plan.prompt.length}-${s.plan.duration_s}-${s.plan.transition}-${s.plan.model ?? ""}`} scene={s} approved={approved} reusable={reusable} choices={choices} usdThb={usdThb} hasFrame={hasFrame} />
-        ))}
-      </ol>
     </div>
   );
 }
 
-function SceneClip({ scene, approved, reusable, choices, usdThb, hasFrame }: { scene: ClipScene; approved: boolean; reusable: ReusableClip[]; choices: VideoChoices; usdThb: number; hasFrame: boolean }) {
+/**
+ * One scene's visual: mode, transition, model, prompt, generated clips and review. `embedded`
+ * drops its own card and heading, for use under the scene's script card (video workspace).
+ */
+export function SceneVisual({
+  scene,
+  approved,
+  reusable,
+  choices,
+  usdThb,
+  hasFrame,
+  embedded = false,
+}: {
+  scene: ClipScene;
+  approved: boolean;
+  reusable: ReusableClip[];
+  choices: VideoChoices;
+  usdThb: number;
+  hasFrame: boolean;
+  embedded?: boolean;
+}) {
   const router = useRouter();
   const [v, setV] = useState(scene.plan);
   const [pending, start] = useTransition();
@@ -161,16 +191,16 @@ function SceneClip({ scene, approved, reusable, choices, usdThb, hasFrame }: { s
     });
 
   return (
-    <li className="rounded-lg border bg-surface" aria-labelledby={id("h")}>
-      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <h3 id={id("h")} className="font-semibold">
-          ฉากที่ {scene.n}
+    <Wrapper embedded={embedded} labelledBy={id("h")}>
+      <div className={embedded ? "flex flex-wrap items-center gap-2 bg-surface-muted/60 px-4 py-2" : "flex flex-wrap items-center gap-2 border-b px-4 py-2"}>
+        <h3 id={id("h")} className={embedded ? "text-[13px] font-semibold" : "font-semibold"}>
+          {embedded ? "คลิป AI & ทรานซิชัน" : `ฉากที่ ${scene.n}`}
         </h3>
-        <span className="text-[13px] text-muted-foreground">{scene.kindLabel}</span>
+        {!embedded && <span className="text-[13px] text-muted-foreground">{scene.kindLabel}</span>}
         {chosen ? <Chip tone="success">ใช้คลิป AI ที่อนุมัติแล้ว</Chip> : v.mode === "ai_video" ? <Chip tone="neutral">ยังไม่มีคลิปที่อนุมัติ</Chip> : null}
       </div>
       <div className="flex flex-col gap-3 p-4 text-[13px]">
-        <p className="line-clamp-2 text-muted-foreground">“{scene.narration || "—"}”</p>
+        {!embedded && <p className="line-clamp-2 text-muted-foreground">“{scene.narration || "—"}”</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={id("mode")}>ภาพของฉากนี้</Label>
@@ -328,6 +358,16 @@ function SceneClip({ scene, approved, reusable, choices, usdThb, hasFrame }: { s
           </ul>
         )}
       </div>
+    </Wrapper>
+  );
+}
+
+function Wrapper({ embedded, labelledBy, children }: { embedded: boolean; labelledBy: string; children: React.ReactNode }) {
+  return embedded ? (
+    <section aria-labelledby={labelledBy}>{children}</section>
+  ) : (
+    <li className="rounded-lg border bg-surface" aria-labelledby={labelledBy}>
+      {children}
     </li>
   );
 }

@@ -66,6 +66,22 @@ export function parseModelPicks(value: unknown): Partial<Record<AiTask, string>>
   return out;
 }
 
+/** Tasks one video can set for itself (workspace); fact extraction and review stay account-wide. */
+export const VIDEO_OVERRIDE_TASKS = ["script", "scene_prompt", "video_product", "video_lifestyle", "tts"] as const satisfies readonly AiTask[];
+
+const VOICE_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
+
+/** One video's AI settings over the Settings defaults (content_projects.ai_overrides). */
+export interface AiOverrides {
+  models: Partial<Record<AiTask, string>>;
+  ttsVoice: string | null;
+}
+
+export function parseAiOverrides(value: unknown): AiOverrides {
+  const v = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return { models: parseModelPicks(v.models), ttsVoice: typeof v.tts_voice === "string" && VOICE_ID.test(v.tts_voice) ? v.tts_voice : null };
+}
+
 export function modelFor(task: AiTask, picks: Partial<Record<AiTask, string>>): string {
   return picks[task] ?? DEFAULT_MODELS[task];
 }

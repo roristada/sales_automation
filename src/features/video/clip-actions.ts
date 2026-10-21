@@ -115,7 +115,7 @@ export async function queueSceneClip(sceneId: string, confirmed = false): Promis
   const [{ data: plan }, { data: product }, settings, catalog] = await Promise.all([
     supabase.from("scene_visual_plans").select("mode, video_task, prompt, duration_s, model").eq("scene_id", sceneId).maybeSingle(),
     supabase.from("products").select("image_url").eq("id", scene.storyboard.project.product_id).maybeSingle(),
-    getAiSettings(supabase),
+    getAiSettings(supabase, { storyboardId: scene.storyboard_id }),
     getCatalog(),
   ]);
   const firstFrame = product?.image_url && /^https?:\/\//i.test(product.image_url) ? product.image_url : null;

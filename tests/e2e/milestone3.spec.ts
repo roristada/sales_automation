@@ -47,7 +47,9 @@ test("content planning flow", async ({ page }) => {
   await expect(page.getByLabel("ความยาวเป้าหมาย")).toHaveValue("15");
   await page.getByLabel("ความยาวเป้าหมาย").selectOption("30");
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
-  await expect(page).toHaveURL(/\/studio\/[0-9a-f-]{36}$/);
+  // New content opens in the video workspace; this test drives Script Studio itself.
+  await expect(page).toHaveURL(/\/workspace\/[0-9a-f-]{36}$/);
+  await page.goto(page.url().replace("/workspace/", "/studio/"));
   const studioUrl = page.url();
 
   // Draft: intro, 2 features, CTA to the basket (no price in the clip since template v2).

@@ -227,3 +227,12 @@ Not done in AI-6: generating AI clips for a whole batch in one click (clips are 
 - [x] Fix: the worker fits the product photo onto a 720×1280 frame (padding in the photo's own corner colours) and sends it as a data: URL (OpenRouter accepts it — tested, ฿4.20, clip fills 9:16, no bars); each finished clip gets a shape check (`checkClipShape`: not 9:16 / black bars via cropdetect) shown to the reviewer (`scene_generations.quality_note`)
 - [x] Templates v2: no price in the clip except "แจ้งราคา"; the CTA sends viewers to the basket/link for the current price and invites them to check discount codes; the AI script prompt forbids price figures without a price scene and never promises a discount not in the facts
 
+## Video workspace — one page per video ✅ (2026-10-22)
+- [x] `/workspace/[storyboardId]` ("ห้องทำวิดีโอ"): step rail (สินค้า & รูป · ตั้งค่าวิดีโอนี้ · ข้อเท็จจริง · สคริปต์ & ภาพต่อฉาก · Render & เผยแพร่) with each step's state, spend on this video vs its cap, and a bottom bar naming the one next step (`src/features/workspace/steps.ts`)
+- [x] Product photos edited in place (`updateProductImages`; offers the full-size link for Shopee "@resize" thumbnails)
+- [x] This video's AI picks over the Settings defaults (`content_projects.ai_overrides`: script, scene prompt, both clip tasks, TTS model and voice) — used by runAiChat, clip queueing, queueRender and the worker's voice-over; per-scene model still overrides on top
+- [x] Scene card = script + that scene's visual (`SceneVisual embedded` under `SceneCard` via `sceneExtras`); approval locks the script part only
+- [x] Video Studio's data and render/output/publish UI moved to `studio-data.ts` / `studio-sections.tsx`, shared by both pages
+- [x] New content, the content list, product page and batches open the workspace; Script Studio and Video Studio link to it
+- [x] Tests — unit 162 ✅ (steps), RLS 33 ✅, e2e 18 ✅ (`workspace.spec.ts`: photos + thumbnail fix, this video's model saved and used as the scene default, facts, scene card with visual, render after approval, no sideways scroll at 390 px; screenshots checked by eye)
+

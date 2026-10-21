@@ -366,7 +366,7 @@ async function ContentTab({ id }: { id: string }) {
           <li key={pr.id} className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               {latest ? (
-                <Link href={`/studio/${latest.id}`} className="font-medium hover:underline">
+                <Link href={`/workspace/${latest.id}`} className="font-medium hover:underline">
                   {pr.title}
                 </Link>
               ) : (

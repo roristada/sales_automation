@@ -17,7 +17,7 @@ import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@
 import { createClient } from "@supabase/supabase-js";
 import { missingClipsMessage, resolveAiClips } from "@/features/ai/clips";
 import { checkAiSpend, DEFAULT_AI_SPEND } from "@/features/ai/budget";
-import { modelFor, parseModelPicks, usdToThb } from "@/features/ai/models";
+import { modelFor, parseAiOverrides, parseModelPicks, usdToThb } from "@/features/ai/models";
 import { listSpeechModels, type SpeechModel } from "@/features/ai/openrouter";
 import { estimateVoiceoverUsd, MUSIC_VOLUME, TTS_INSTRUCTIONS, voiceFor } from "@/features/ai/voiceover";
 import { licenseVerdict } from "@/features/assets/licensing";
@@ -251,9 +251,14 @@ async function loadMusic(job: Tables<"render_jobs">, assetId: unknown) {
  */
 async function loadTts(job: Tables<"render_jobs">, requested: Json | undefined) {
   if (!requested || requested === "none") return null;
-  const { data: s } = await db.from("ai_settings").select("models, tts_voice, per_video_cap_thb, confirm_over_thb").eq("owner_id", job.owner_id).maybeSingle();
-  const model = modelFor("tts", parseModelPicks(s?.models));
-  const tts: TtsSettings = { model, voice: voiceFor(model, s?.tts_voice), instructions: TTS_INSTRUCTIONS };
+  const [{ data: s }, { data: sb }] = await Promise.all([
+    db.from("ai_settings").select("models, tts_voice, per_video_cap_thb, confirm_over_thb").eq("owner_id", job.owner_id).maybeSingle(),
+    db.from("storyboards").select("project:content_projects(ai_overrides)").eq("id", job.storyboard_id).eq("owner_id", job.owner_id).maybeSingle(),
+  ]);
+  // The video's own picks (workspace) over the Settings defaults, as when queuing.
+  const own = parseAiOverrides(sb?.project?.ai_overrides);
+  const model = modelFor("tts", { ...parseModelPicks(s?.models), ...own.models });
+  const tts: TtsSettings = { model, voice: voiceFor(model, own.ttsVoice ?? s?.tts_voice), instructions: TTS_INSTRUCTIONS };
   let catalog: SpeechModel | undefined;
   try {
     catalog = (await listSpeechModels()).find((m) => m.id === model);

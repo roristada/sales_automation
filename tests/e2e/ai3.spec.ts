@@ -43,7 +43,9 @@ test("plan an AI clip, render only with an approved clip, caption notes AI image
   await page.getByRole("link", { name: "สร้างคอนเทนต์" }).first().click();
   await page.getByRole("radio", { name: "รีวิวสั้น" }).check();
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
-  await expect(page).toHaveURL(/\/studio\/[0-9a-f-]{36}$/);
+  // New content opens in the video workspace; this test drives Script Studio itself.
+  await expect(page).toHaveURL(/\/workspace\/[0-9a-f-]{36}$/);
+  await page.goto(page.url().replace("/workspace/", "/studio/"));
   const storyboardId = page.url().split("/").pop()!;
 
   // Approving through the UI needs every claim checked (covered by M3); approve directly here.

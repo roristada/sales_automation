@@ -32,6 +32,10 @@ export interface StudioShellProps {
   llmNote: string;
   promptContext: AiPromptContext;
   assets: MediaAsset[];
+  /** Per scene, under its script (the workspace's scene visuals). */
+  sceneExtras?: Record<string, React.ReactNode>;
+  /** In the video workspace: new versions open there, and facts/video are on the same page. */
+  inWorkspace?: boolean;
 }
 
 export function StudioShell(p: StudioShellProps) {
@@ -64,11 +68,11 @@ export function StudioShell(p: StudioShellProps) {
       const res = await createNewVersion(p.storyboardId).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
       if (!res.ok) return void toast.error(res.error);
       toast.success("สร้างเวอร์ชันใหม่แล้ว");
-      router.push(`/studio/${res.data.id}`);
+      router.push(p.inWorkspace ? `/workspace/${res.data.id}` : `/studio/${res.data.id}`);
     });
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0 lg:order-1">
         <StudioEditor
           storyboardId={p.storyboardId}
@@ -83,6 +87,7 @@ export function StudioShell(p: StudioShellProps) {
           promptContext={p.promptContext}
           assets={p.assets}
           onDirtyChange={setDirty}
+          sceneExtras={p.sceneExtras}
         />
       </div>
 
@@ -96,7 +101,7 @@ export function StudioShell(p: StudioShellProps) {
               </p>
               <p className="mt-1 text-[13px] text-muted-foreground">สคริปต์นี้ล็อกไว้และพร้อมทำวิดีโอ ถ้าต้องแก้ ให้สร้างเวอร์ชันใหม่</p>
               <Button asChild className="mt-3 w-full">
-                <Link href={`/videos/${p.storyboardId}`}>ไปทำวิดีโอ</Link>
+                <Link href={p.inWorkspace ? "#render" : `/videos/${p.storyboardId}`}>{p.inWorkspace ? "ไปที่ Render" : "ไปทำวิดีโอ"}</Link>
               </Button>
               <Button className="mt-3 w-full" variant="outline" disabled={pending} onClick={newVersion}>
                 <CopyPlus aria-hidden /> {pending ? "กำลังสร้าง…" : "สร้างเวอร์ชันใหม่เพื่อแก้ไข"}
@@ -142,7 +147,7 @@ export function StudioShell(p: StudioShellProps) {
                     <span className="text-foreground">{i.message}</span>
                   </p>
                 ))}
-              <Link href={`/products/${p.productId}?tab=facts`} className="mt-2 inline-block text-xs text-primary hover:underline lg:hidden">
+              <Link href={p.inWorkspace ? "#facts" : `/products/${p.productId}?tab=facts`} className="mt-2 inline-block text-xs text-primary hover:underline lg:hidden">
                 เพิ่มหรือแก้ข้อเท็จจริง
               </Link>
             </>
@@ -175,7 +180,7 @@ export function StudioShell(p: StudioShellProps) {
               </li>
             ))}
           </ul>
-          <Link href={`/products/${p.productId}?tab=facts`} className="mt-3 inline-block text-primary hover:underline">
+          <Link href={p.inWorkspace ? "#facts" : `/products/${p.productId}?tab=facts`} className="mt-3 inline-block text-primary hover:underline">
             เพิ่มหรือแก้ข้อเท็จจริง
           </Link>
         </section>

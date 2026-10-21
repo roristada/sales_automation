@@ -126,7 +126,7 @@ export function BatchRunner({ batchId, useAi, rows, autoStart, voiceAvailable }:
               <StatusBadge status={current === r.id ? "processing" : BADGE[r.status]} label={current === r.id ? "กำลังทำ" : BATCH_STATUS_LABEL[r.status]} />
               {r.storyboardId && (
                 <Button asChild size="sm" variant="outline">
-                  <Link href={r.scriptStatus === "approved" ? `/videos/${r.storyboardId}` : `/studio/${r.storyboardId}`}>{r.scriptStatus === "approved" ? "Video Studio" : "ตรวจใน Studio"}</Link>
+                  <Link href={`/workspace/${r.storyboardId}`}>{r.scriptStatus === "approved" ? "ทำวิดีโอต่อ" : "ตรวจและอนุมัติ"}</Link>
                 </Button>
               )}
             </div>

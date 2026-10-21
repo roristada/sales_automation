@@ -56,17 +56,17 @@ test("batch: draft several scripts, review each, render the approved ones", asyn
   await expect(items).toHaveCount(2);
   await expect(items.filter({ hasText: "ร่างจาก template แล้ว" })).toHaveCount(2, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "ทำครบทุกงานแล้ว" })).toBeDisabled();
-  await expect(items.getByRole("link", { name: "ตรวจใน Studio" })).toHaveCount(2);
+  await expect(items.getByRole("link", { name: "ตรวจและอนุมัติ" })).toHaveCount(2);
   await expect(page.getByRole("button", { name: /Render \(0 งานที่อนุมัติ\)/ })).toBeDisabled();
 
   // Approve one (claim review is covered by M3), then render the approved ones together.
-  const href = await items.first().getByRole("link", { name: "ตรวจใน Studio" }).getAttribute("href");
+  const href = await items.first().getByRole("link", { name: "ตรวจและอนุมัติ" }).getAttribute("href");
   const storyboardId = href!.split("/").pop()!;
   const admin = createClient<Database>(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   expect((await admin.from("storyboards").update({ status: "approved", approved_at: new Date().toISOString() }).eq("id", storyboardId)).error).toBeNull();
   await page.goto(batchUrl);
   await expect(page.getByText("อนุมัติแล้ว 1/2")).toBeVisible();
-  await expect(items.first().getByRole("link", { name: "Video Studio" })).toBeVisible();
+  await expect(items.first().getByRole("link", { name: "ทำวิดีโอต่อ" })).toBeVisible();
   await page.getByRole("button", { name: /Render \(1 งานที่อนุมัติ\)/ }).click();
   await expect(page.getByText("เข้าคิว render 1 วิดีโอ")).toBeVisible();
   await expect(items.first().getByText(/รอ render/)).toBeVisible();

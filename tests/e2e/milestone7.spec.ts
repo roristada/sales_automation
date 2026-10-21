@@ -53,7 +53,9 @@ test("import results and attribute commission to a video", async ({ page }) => {
   await page.getByRole("radio", { name: "แจ้งราคา" }).check();
   await page.getByLabel("ความยาวเป้าหมาย").selectOption("15");
   await page.getByRole("button", { name: "สร้างฉบับร่าง" }).click();
-  await expect(page).toHaveURL(/\/studio\//);
+  // New content opens in the video workspace; this test drives Script Studio itself.
+  await expect(page).toHaveURL(/\/workspace\//);
+  await page.goto(page.url().replace("/workspace/", "/studio/"));
   const confirm = page.getByRole("button", { name: "ตรงกับข้อเท็จจริง" });
   const n = await confirm.count();
   for (let i = 0; i < n; i++) {

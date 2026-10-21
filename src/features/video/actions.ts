@@ -70,7 +70,7 @@ export async function queueRender(storyboardId: string, opts: RenderOptions = {}
   let tts: { model: string; voice: string | null; instructions: string } | null = null;
   if (opts.voice) {
     if (!isOpenRouterConfigured()) return { ok: false, error: "ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY ใน .env.local — render แบบไม่มีเสียงพากย์ได้" };
-    const [settings, catalog] = await Promise.all([getAiSettings(supabase), getCatalog()]);
+    const [settings, catalog] = await Promise.all([getAiSettings(supabase, { storyboardId }), getCatalog()]);
     const model = modelFor("tts", settings.models);
     if ("error" in catalog) return { ok: false, error: catalog.error };
     const info = catalog.speech.find((m) => m.id === model);

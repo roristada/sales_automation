@@ -398,6 +398,7 @@ export type Database = {
       };
       content_projects: {
         Row: {
+          ai_overrides: NonNullable<Json>;
           created_at: string;
           id: string;
           owner_id: string;
@@ -409,6 +410,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          ai_overrides?: NonNullable<Json>;
           created_at?: string;
           id?: string;
           owner_id?: string;
@@ -419,6 +421,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          ai_overrides?: NonNullable<Json>;
           created_at?: string;
           id?: string;
           owner_id?: string;

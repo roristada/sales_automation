@@ -235,7 +235,8 @@ const createSchema = z.object({
 export async function createContentProject(_prev: CreateProjectState, formData: FormData): Promise<CreateProjectState> {
   const res = await createProjectFromTemplate(Object.fromEntries(formData) as z.input<typeof createSchema>);
   if (!res.ok) return "fieldErrors" in res ? { fieldErrors: res.fieldErrors } : { error: res.error };
-  redirect(studioPath(res.data.storyboardId));
+  // A new video opens in its workspace: product, settings, facts, script, visuals and render on one page.
+  redirect(`/workspace/${res.data.storyboardId}`);
 }
 
 /**

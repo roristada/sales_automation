@@ -225,6 +225,7 @@ function SceneCard({
   locked,
   promptContext,
   assets,
+  extra,
 }: {
   scene: EditorScene;
   count: number;
@@ -233,6 +234,8 @@ function SceneCard({
   locked: boolean;
   promptContext: AiPromptContext;
   assets: MediaAsset[];
+  /** Shown under the script part of the card (the video workspace puts the scene's visual here). */
+  extra?: React.ReactNode;
 }) {
   const { pending, run } = useRun();
   const markDirty = useContext(DirtyContext);
@@ -378,6 +381,7 @@ function SceneCard({
           {!locked && <AddClaim sceneId={scene.id} facts={facts} />}
         </div>
       </div>
+      {extra && <div className="border-t">{extra}</div>}
     </li>
   );
 }
@@ -456,6 +460,7 @@ export function StudioEditor({
   promptContext,
   assets,
   onDirtyChange,
+  sceneExtras,
 }: {
   storyboardId: string;
   hook: string;
@@ -469,6 +474,7 @@ export function StudioEditor({
   promptContext: AiPromptContext;
   assets: MediaAsset[];
   onDirtyChange?: (dirty: boolean) => void;
+  sceneExtras?: Record<string, React.ReactNode>;
 }) {
   const { pending, run } = useRun();
   const dirtySet = useRef(new Set<string>());
@@ -508,7 +514,7 @@ export function StudioEditor({
           </h2>
           <ol className="flex flex-col gap-3">
             {scenes.map((s) => (
-              <SceneCard key={`${s.id}-${s.updated_at}`} scene={s} count={scenes.length} facts={facts} issues={issues.filter((i) => i.sceneId === s.id)} locked={locked} promptContext={promptContext} assets={assets} />
+              <SceneCard key={`${s.id}-${s.updated_at}`} scene={s} count={scenes.length} facts={facts} issues={issues.filter((i) => i.sceneId === s.id)} locked={locked} promptContext={promptContext} assets={assets} extra={sceneExtras?.[s.id]} />
             ))}
           </ol>
           {!locked && (

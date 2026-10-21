@@ -1,8 +1,10 @@
+import { LayoutPanelTop } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
 import { Chip, StatusBadge } from "@/components/shared/status-badge";
 import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { LLM_STATUS } from "@/features/content/llm";
@@ -41,6 +43,13 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
             </span>
             {locked && sb.approved_at && <span>อนุมัติเมื่อ {formatDateTime(sb.approved_at)}</span>}
           </>
+        }
+        actions={
+          <Button asChild variant="outline">
+            <Link href={`/workspace/${sb.id}`}>
+              <LayoutPanelTop aria-hidden /> เปิดในห้องทำวิดีโอ
+            </Link>
+          </Button>
         }
       />
 
