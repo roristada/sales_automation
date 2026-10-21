@@ -60,7 +60,21 @@ function FactForm({ productId, fact, onDone }: { productId: string; fact?: FactR
 }
 
 /** Product facts list with add/edit/delete. Scripts may only state what is listed here. */
-export function FactsEditor({ productId, productName, description, facts }: { productId: string; productName: string; description: string | null; facts: FactRow[] }) {
+export function FactsEditor({
+  productId,
+  productName,
+  description,
+  facts,
+  aiReady,
+  imageCount,
+}: {
+  productId: string;
+  productName: string;
+  description: string | null;
+  facts: FactRow[];
+  aiReady: boolean;
+  imageCount: number;
+}) {
   const router = useRouter();
   const unconfirmed = facts.filter((f) => f.status === "ai_estimate").length;
   const confirm = async (f: FactRow) => {
@@ -168,7 +182,7 @@ export function FactsEditor({ productId, productName, description, facts }: { pr
             <Plus aria-hidden /> เพิ่มข้อเท็จจริง
           </Button>
         )}
-        <FactExtractDialog productId={productId} productName={productName} description={description} existing={facts.map((f) => ({ label: f.label, value: f.value }))} />
+        <FactExtractDialog productId={productId} productName={productName} description={description} existing={facts.map((f) => ({ label: f.label, value: f.value }))} aiReady={aiReady} imageCount={imageCount} />
       </div>
     </div>
   );

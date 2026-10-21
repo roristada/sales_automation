@@ -11,16 +11,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { applyAiSceneText } from "./actions";
+import { aiWriteScene } from "./ai-actions";
 import { buildScenePrompt, parseSceneReply, type PromptContext, promptFacts, type PromptScene } from "./ai-prompt";
 import type { Fact } from "./facts";
 
-export type AiPromptContext = Omit<PromptContext, "instruction">;
+/** `aiReady`: OpenRouter is configured, so a direct call is offered next to copy/paste. */
+export type AiPromptContext = Omit<PromptContext, "instruction"> & { aiReady?: boolean };
 
 /**
  * Manual AI help: copy a prompt to use in any AI chat (e.g. a Claude subscription at claude.ai),
  * then paste the reply back. No API key; the reply is checked like any other text.
  */
-export function AiAssistDialog({ sceneId, scene, facts, context, disabled }: { sceneId: string; scene: PromptScene; facts: Fact[]; context: AiPromptContext; disabled?: boolean }) {
+export function AiAssistDialog({
+  sceneId,
+  scene,
+  facts,
+  context,
+  disabled,
+}: {
+  sceneId: string;
+  scene: PromptScene;
+  facts: Fact[];
+  context: AiPromptContext;
+  disabled?: boolean;
+}) {
+  const aiReady = !!context.aiReady;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [instruction, setInstruction] = useState("");
@@ -28,6 +43,7 @@ export function AiAssistDialog({ sceneId, scene, facts, context, disabled }: { s
   // Fact codes as offered in the copied prompt, so a later fact change can't shift F-numbers.
   const [codes, setCodes] = useState<Map<string, string> | null>(null);
   const [pending, start] = useTransition();
+  const [aiPending, startAi] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const currentCodes = useMemo(() => new Map(promptFacts(facts).map(({ code, fact }) => [code, fact.key])), [facts]);
@@ -44,6 +60,17 @@ export function AiAssistDialog({ sceneId, scene, facts, context, disabled }: { s
     } catch {
       toast.error("คัดลอกไม่สำเร็จ — เบราว์เซอร์ไม่อนุญาตให้เข้าถึงคลิปบอร์ด");
     }
+  }
+
+  function writeWithAi() {
+    startAi(async () => {
+      setError(null);
+      const res = await aiWriteScene(sceneId, instruction).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      if (!res.ok) return setError(res.error);
+      setCodes(new Map(res.data.codes));
+      setReply(res.data.reply.trim());
+      toast.success(`AI เขียนแล้ว · ค่าใช้จ่าย ฿${res.data.costThb.toFixed(4)} — ตรวจก่อนกดใช้`);
+    });
   }
 
   function apply() {
@@ -80,6 +107,11 @@ export function AiAssistDialog({ sceneId, scene, facts, context, disabled }: { s
             </Label>
             <Input id={`ai-instruction-${sceneId}`} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="เช่น สั้นลง, เป็นกันเองขึ้น, เปิดด้วยคำถาม" maxLength={200} />
             <div className="flex flex-wrap gap-2">
+              {aiReady && (
+                <Button type="button" onClick={writeWithAi} disabled={aiPending}>
+                  <Sparkles aria-hidden /> {aiPending ? "AI กำลังเขียน…" : "ให้ AI เขียนเลย"}
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={copyPrompt}>
                 <Copy aria-hidden /> คัดลอกคำสั่ง
               </Button>
@@ -93,7 +125,7 @@ export function AiAssistDialog({ sceneId, scene, facts, context, disabled }: { s
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-[13px] font-semibold">2. วางคำตอบจาก AI</h3>
+            <h3 className="text-[13px] font-semibold">2. {aiReady ? "คำตอบจาก AI (แก้ได้ก่อนใช้)" : "วางคำตอบจาก AI"}</h3>
             <Label htmlFor={`ai-reply-${sceneId}`} className="sr-only">
               คำตอบจาก AI
             </Label>

@@ -12,7 +12,8 @@ import { getTemplate } from "@/features/content/templates";
 import { Button } from "@/components/ui/button";
 import { DataValue, formatAge, formatDate, formatDateTime, formatPercent, formatTHB } from "@/features/products/data-value";
 import { DeleteProductButton } from "@/features/products/delete-button";
-import { fieldStatus, type Provenance, SOURCE_LABEL, STALE_AFTER_DAYS, type TrackedField } from "@/features/products/schema";
+import { isOpenRouterConfigured } from "@/features/ai/openrouter";
+import { fieldStatus, galleryList, type Provenance, SOURCE_LABEL, STALE_AFTER_DAYS, type TrackedField } from "@/features/products/schema";
 import { CONFIDENCE_LABEL, computeOpportunityScore, effectiveConfidence } from "@/features/research/opportunity-score";
 import { ScoreBar } from "@/features/research/score-view";
 import { TrendChart } from "@/features/trends/charts";
@@ -313,7 +314,7 @@ async function FactsTab({ id }: { id: string }) {
   const { supabase } = await getCurrentUser();
   const [{ data: facts, error }, { data: product }] = await Promise.all([
     supabase!.from("product_facts").select("id, label, value, status, source_url").eq("product_id", id).order("position").order("created_at"),
-    supabase!.from("products").select("name, description").eq("id", id).maybeSingle(),
+    supabase!.from("products").select("name, description, image_url, gallery_urls").eq("id", id).maybeSingle(),
   ]);
   if (error) return <Notice tone="error">โหลดข้อเท็จจริงไม่สำเร็จ: {error.message}</Notice>;
   return (
@@ -321,7 +322,14 @@ async function FactsTab({ id }: { id: string }) {
       <p className="text-[13px] text-muted-foreground">
         สคริปต์จะพูดถึงคุณสมบัติของสินค้าได้เฉพาะที่อยู่ในรายการนี้ (และราคา ชื่อ หมวดหมู่ของสินค้า) ทุก claim ต้องอ้างอิงข้อเท็จจริงก่อนอนุมัติ — เขียนตามที่ตรวจสอบได้ และใส่ลิงก์แหล่งที่มาถ้ามี
       </p>
-      <FactsEditor productId={id} productName={product?.name ?? ""} description={product?.description ?? null} facts={facts ?? []} />
+      <FactsEditor
+        productId={id}
+        productName={product?.name ?? ""}
+        description={product?.description ?? null}
+        facts={facts ?? []}
+        aiReady={isOpenRouterConfigured()}
+        imageCount={Math.min(5, new Set([product?.image_url, ...galleryList(product?.gallery_urls)].filter(Boolean)).size)}
+      />
     </div>
   );
 }

@@ -10,23 +10,56 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { addExtractedFacts } from "./actions";
-import { buildFactExtractPrompt, type ExtractedFact, MAX_DESCRIPTION_CHARS, MAX_EXTRACTED_FACTS, parseFactReply } from "./fact-extract";
+import { aiExtractFacts } from "./ai-actions";
+import { buildFactExtractPrompt, type ExtractedFact, MAX_DESCRIPTION_CHARS, MAX_EXTRACTED_FACTS, type ParsedFact, parseFactReply } from "./fact-extract";
 
 /**
  * Facts from the product description with manual AI help (no API key): paste the description,
  * copy a prompt to any AI chat, paste the reply back, pick the facts to keep. They are saved as
  * "AI ประมาณการ" and must be confirmed one by one before a script can use them.
  */
-export function FactExtractDialog({ productId, productName, description: initialDescription, existing }: { productId: string; productName: string; description: string | null; existing: ExtractedFact[] }) {
+export function FactExtractDialog({
+  productId,
+  productName,
+  description: initialDescription,
+  existing,
+  aiReady,
+  imageCount,
+}: {
+  productId: string;
+  productName: string;
+  description: string | null;
+  existing: ExtractedFact[];
+  /** OpenRouter is configured: offer a direct call next to copy/paste. */
+  aiReady: boolean;
+  imageCount: number;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState(initialDescription ?? "");
   const [reply, setReply] = useState("");
+  // Facts from a direct API call; replaced by a pasted reply when the user pastes one.
+  const [aiFacts, setAiFacts] = useState<{ facts: ParsedFact[]; note: string } | null>(null);
+  const [useImages, setUseImages] = useState(imageCount > 0);
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [aiPending, startAi] = useTransition();
 
-  const parsed = useMemo(() => (reply.trim() ? parseFactReply(reply, description, existing) : null), [reply, description, existing]);
+  const pasted = useMemo(() => (reply.trim() ? parseFactReply(reply, description, existing) : null), [reply, description, existing]);
+  const parsed = pasted ?? (aiFacts ? { facts: aiFacts.facts, error: null } : null);
+
+  function runAi() {
+    if (!description.trim()) return setError("วางคำอธิบายสินค้าก่อน");
+    startAi(async () => {
+      setError(null);
+      const res = await aiExtractFacts(productId, { description, useImages: useImages && imageCount > 0 }).catch(() => ({ ok: false as const, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ" }));
+      if (!res.ok) return setError(res.error);
+      setReply("");
+      setSkipped(new Set());
+      setAiFacts({ facts: res.data.facts, note: `AI อ่าน${res.data.images ? `คำอธิบายและรูป ${res.data.images} รูป` : "คำอธิบาย"} · ค่าใช้จ่าย ฿${res.data.costThb.toFixed(4)}` });
+    });
+  }
   const chosen = parsed?.facts.filter((f, i) => !f.problem && !skipped.has(i)) ?? [];
 
   async function copyPrompt() {
@@ -48,6 +81,7 @@ export function FactExtractDialog({ productId, productName, description: initial
       toast.success(`เพิ่ม ${res.data.added} ข้อแล้ว — ตรวจกับหน้าสินค้าแล้วกด “ยืนยันแล้ว” ทีละข้อ`);
       setOpen(false);
       setReply("");
+      setAiFacts(null);
       setSkipped(new Set());
       router.refresh();
     });
@@ -79,6 +113,21 @@ export function FactExtractDialog({ productId, productName, description: initial
               maxLength={MAX_DESCRIPTION_CHARS}
               placeholder="คัดลอกส่วน “รายละเอียดสินค้า” และ “ข้อมูลจำเพาะ” จากหน้าสินค้ามาวางที่นี่"
             />
+            {aiReady && (
+              <div className="flex flex-col gap-2 rounded-md border bg-surface-muted p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" onClick={runAi} disabled={aiPending}>
+                    <Sparkles aria-hidden /> {aiPending ? "AI กำลังอ่าน…" : "ให้ AI ดึงเลย"}
+                  </Button>
+                  {imageCount > 0 && (
+                    <label className="flex items-center gap-2 text-[13px]">
+                      <input type="checkbox" checked={useImages} onChange={(e) => setUseImages(e.target.checked)} /> อ่านรูปสินค้าด้วย ({imageCount} รูป — สเปกที่พิมพ์บนรูป)
+                    </label>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">เรียก AI ผ่าน OpenRouter (โมเดลตามหน้าตั้งค่า) ปกติไม่ถึง ฿0.10 ต่อครั้ง · หรือคัดลอกคำสั่งไปแชท AI ด้านล่างแทนได้</p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" onClick={copyPrompt}>
                 <Copy aria-hidden /> คัดลอกคำสั่ง
@@ -101,6 +150,7 @@ export function FactExtractDialog({ productId, productName, description: initial
                 setSkipped(new Set());
               }} rows={5} placeholder={"FACT: บลูทูธ | Bluetooth 6.1\nFACT: กันน้ำ | IP55"} />
             {parsed?.error && <Notice tone="error">{parsed.error}</Notice>}
+            {!pasted && aiFacts && <p className="text-xs text-muted-foreground">{aiFacts.note}</p>}
             {parsed && !parsed.error && (
               <ul className="divide-y rounded-md border bg-surface text-[13px]" aria-label="ข้อเท็จจริงที่ดึงได้">
                 {parsed.facts.map((f, i) => (
@@ -120,6 +170,7 @@ export function FactExtractDialog({ productId, productName, description: initial
                     />
                     <label htmlFor={`extract-${i}`} className="min-w-0">
                       <span className="text-muted-foreground">{f.label}:</span> <span className={f.problem ? "line-through" : "font-medium"}>{f.value}</span>
+                      {f.source === "image" && !f.problem && <span className="block text-xs text-warning">อ่านจากรูป — ตัวเลขตรวจกับคำอธิบายไม่ได้ ดูรูปก่อนยืนยัน</span>}
                       {f.problem && <span className="block text-xs text-warning">ไม่เพิ่ม — {f.problem}</span>}
                     </label>
                   </li>

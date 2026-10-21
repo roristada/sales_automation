@@ -104,7 +104,7 @@ export async function deleteFact(productId: string, factId: string): Promise<Act
 const extractedSchema = z.object({
   description: z.string().trim().min(1, "ไม่มีคำอธิบายสินค้า").max(MAX_DESCRIPTION_CHARS),
   facts: z
-    .array(z.object({ label: z.string().trim().min(1).max(80), value: z.string().trim().min(1).max(300) }))
+    .array(z.object({ label: z.string().trim().min(1).max(80), value: z.string().trim().min(1).max(300), source: z.enum(["text", "image"]).optional() }))
     .min(1, "เลือกอย่างน้อย 1 ข้อ")
     .max(MAX_EXTRACTED_FACTS, `เพิ่มได้ครั้งละไม่เกิน ${MAX_EXTRACTED_FACTS} ข้อ`),
 });
@@ -445,22 +445,54 @@ export async function applyAiSceneText(sceneId: string, input: z.input<typeof ai
   const { supabase, user } = await requireUser();
   const scene = await sceneStoryboard(supabase, sceneId);
   if (!scene) return { ok: false, error: "ไม่พบฉาก" };
-  for (const c of parsed.data.claims) {
-    const belongs = await checkFactBelongs(supabase, scene.storyboard_id, c.factKey);
-    if (belongs) return { ok: false, error: belongs };
-  }
-  const { claims, ...text } = parsed.data;
-  const { error } = await supabase.from("storyboard_scenes").update({ ...text, text_origin: "ai" }).eq("id", sceneId);
-  if (error) return { ok: false, error: dbError(error) };
-  const { error: delError } = await supabase.from("scene_claims").delete().eq("scene_id", sceneId);
-  if (delError) return { ok: false, error: dbError(delError) };
-  if (claims.length) {
-    const { error: claimError } = await supabase
-      .from("scene_claims")
-      .insert(claims.map((c) => ({ scene_id: sceneId, owner_id: user.id, text: c.text, ...parseFactKey(c.factKey) })));
-    if (claimError) return { ok: false, error: dbError(claimError) };
-  }
+  const error = await writeAiScene(supabase, user.id, scene.storyboard_id, sceneId, parsed.data);
+  if (error) return { ok: false, error };
   revalidatePath(studioPath(scene.storyboard_id));
+  return { ok: true, data: null };
+}
+
+/** Replaces one scene's text and claims with AI text. Returns an error message or null. */
+async function writeAiScene(db: Db, userId: string, storyboardId: string, sceneId: string, data: z.output<typeof aiSceneSchema>): Promise<string | null> {
+  for (const c of data.claims) {
+    const belongs = await checkFactBelongs(db, storyboardId, c.factKey);
+    if (belongs) return belongs;
+  }
+  const { claims, ...text } = data;
+  const { error } = await db.from("storyboard_scenes").update({ ...text, text_origin: "ai" }).eq("id", sceneId);
+  if (error) return dbError(error);
+  const { error: delError } = await db.from("scene_claims").delete().eq("scene_id", sceneId);
+  if (delError) return dbError(delError);
+  if (claims.length) {
+    const { error: claimError } = await db.from("scene_claims").insert(claims.map((c) => ({ scene_id: sceneId, owner_id: userId, text: c.text, ...parseFactKey(c.factKey) })));
+    if (claimError) return dbError(claimError);
+  }
+  return null;
+}
+
+const aiScriptSchema = storyboardTextSchema.omit({ caption: true }).extend({
+  caption: z.string().max(2200, "แคปชันยาวเกิน 2,200 ตัวอักษร"),
+  scenes: z.array(aiSceneSchema).min(1).max(30),
+});
+
+/**
+ * Applies a whole AI-written script (previewed by the user): hook, CTA, caption and every scene in
+ * order. Scene count must still match — if scenes were added or removed meanwhile, write again.
+ */
+export async function applyAiScript(storyboardId: string, input: z.input<typeof aiScriptSchema>): Promise<ActionResult<null>> {
+  const parsed = aiScriptSchema.safeParse(input);
+  if (!uuid.safeParse(storyboardId).success || !parsed.success) return { ok: false, error: parsed.error?.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  const { supabase, user } = await requireUser();
+  const { data: scenes } = await supabase.from("storyboard_scenes").select("id").eq("storyboard_id", storyboardId).order("position");
+  if (!scenes?.length) return { ok: false, error: "ไม่พบสคริปต์" };
+  if (scenes.length !== parsed.data.scenes.length) return { ok: false, error: "จำนวนฉากเปลี่ยนไประหว่างนั้น — ให้ AI เขียนใหม่อีกครั้ง" };
+  const { scenes: drafts, ...text } = parsed.data;
+  const { error } = await supabase.from("storyboards").update(text).eq("id", storyboardId);
+  if (error) return { ok: false, error: dbError(error) };
+  for (const [i, s] of scenes.entries()) {
+    const sceneError = await writeAiScene(supabase, user.id, storyboardId, s.id, drafts[i]);
+    if (sceneError) return { ok: false, error: `ฉากที่ ${i + 1}: ${sceneError}` };
+  }
+  revalidatePath(studioPath(storyboardId));
   return { ok: true, data: null };
 }
 

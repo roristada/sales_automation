@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { approveStoryboard, createNewVersion } from "./actions";
 import type { AiPromptContext } from "./ai-assist-dialog";
+import { AiScriptDialog } from "./ai-script-dialog";
 import type { MediaAsset } from "./scene-media";
 import { type EditorFact, type EditorScene, StudioEditor } from "./studio-editor";
 import { estimateTotalSeconds, type ValidationIssue } from "./validate";
@@ -123,6 +124,11 @@ export function StudioShell(p: StudioShellProps) {
                 <Notice tone="error" className="mt-3">
                   {error}
                 </Notice>
+              )}
+              {p.promptContext.aiReady && (
+                <div className="mt-3">
+                  <AiScriptDialog storyboardId={p.storyboardId} facts={p.facts} disabled={pending || dirty} />
+                </div>
               )}
               {dirty && <p className="mt-3 text-[13px] text-warning">มีการแก้ไขที่ยังไม่ได้บันทึก — บันทึกก่อนอนุมัติ</p>}
               <Button className="mt-3 w-full" disabled={pending || dirty || blocks.length > 0} onClick={approve}>

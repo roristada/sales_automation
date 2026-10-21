@@ -10,6 +10,19 @@ import { fieldKey, factKey } from "./facts";
  */
 
 export const TEMPLATE_VERSION = 1;
+
+export const SCENE_KIND_LABEL: Record<string, string> = {
+  intro: "แนะนำสินค้า",
+  feature: "จุดเด่น",
+  price: "ราคา",
+  cta: "ปิดท้าย / CTA",
+  problem: "ปัญหา",
+  solution: "ทางแก้",
+  unbox: "แกะกล่อง",
+  in_box: "ของในกล่อง",
+  step: "ขั้นตอน",
+  custom: "ฉากเพิ่มเอง",
+};
 export const PLATFORMS = ["tiktok", "reels", "shorts"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export const PLATFORM_LABEL: Record<Platform, string> = { tiktok: "TikTok", reels: "Instagram Reels", shorts: "YouTube Shorts" };

@@ -104,3 +104,4 @@ npm run backup                   # สำรองข้อมูล (ควร�
 ### 2026-10-22
 
 - AI-1: client OpenRouter, ตั้งค่าโมเดลต่องานจาก catalog จริง, `ai_settings`/`ai_requests`, ค่าใช้จ่าย AI รวมเข้าเพดานเดิม, ปุ่มทดสอบเรียกจริง — ตรวจ catalog วันนี้: รุ่นตามแผนมีครบ (DeepSeek V4.1 Flash, GLM 5.3 Flash, Kling v3.0 std, Veo 3.1 Fast/Lite)
+- AI-2: ปุ่ม AI เรียก API ตรง (ดึงข้อเท็จจริงจากคำอธิบาย+รูป, เขียนทีละฉาก, เขียนทั้งสคริปต์พร้อมตัวอย่างก่อนใช้), เทียบโมเดลกับสคริปต์ Edifier: DeepSeek ฿0.017 / Haiku ฿0.063 ใช้ได้ทั้งคู่ — เครดิต OpenRouter เกือบหมด ยังเทียบ Qwen/Sonnet ไม่ได้

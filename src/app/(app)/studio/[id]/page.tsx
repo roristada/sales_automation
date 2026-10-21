@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { PageHeader } from "@/components/shared/page-header";
 import { Chip, StatusBadge } from "@/components/shared/status-badge";
+import { isOpenRouterConfigured } from "@/features/ai/openrouter";
 import { LLM_STATUS } from "@/features/content/llm";
 import { loadStudio } from "@/features/content/queries";
 import { StudioShell } from "@/features/content/studio-shell";
@@ -73,13 +74,18 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         locked={locked}
         targetSeconds={project.target_duration_s}
         approvedAt={sb.approved_at}
-        llmNote={LLM_STATUS.note}
+        llmNote={
+          isOpenRouterConfigured()
+            ? "เชื่อม AI ผ่าน OpenRouter แล้ว — กด “ให้ AI เขียนทั้งสคริปต์” หรือ “AI ช่วยเขียน” ในแต่ละฉาก (โมเดลและเพดานค่าใช้จ่ายตั้งได้ที่หน้าตั้งค่า) ปุ่มคัดลอกคำสั่งไปแชท AI ยังใช้ได้"
+            : LLM_STATUS.note
+        }
         assets={assets}
         promptContext={{
           productName: product.name,
           templateName: getTemplate(sb.template_id)?.name ?? sb.template_id,
           platformLabel: PLATFORM_LABEL[project.platform as Platform],
           targetSeconds: project.target_duration_s,
+          aiReady: isOpenRouterConfigured(),
         }}
       />
     </>

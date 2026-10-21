@@ -18,6 +18,7 @@ import { addClaim, addScene, deleteClaim, deleteScene, moveScene, regenerateScen
 import { AiAssistDialog, type AiPromptContext } from "./ai-assist-dialog";
 import { claimFactKey } from "./facts";
 import { type MediaAsset, SceneMedia } from "./scene-media";
+import { SCENE_KIND_LABEL as KIND_LABEL } from "./templates";
 import { estimateSceneSeconds, type ValidationIssue } from "./validate";
 
 export interface EditorFact {
@@ -46,18 +47,6 @@ export interface EditorScene {
   claims: EditorClaim[];
 }
 
-const KIND_LABEL: Record<string, string> = {
-  intro: "แนะนำสินค้า",
-  feature: "จุดเด่น",
-  price: "ราคา",
-  cta: "ปิดท้าย / CTA",
-  problem: "ปัญหา",
-  solution: "ทางแก้",
-  unbox: "แกะกล่อง",
-  in_box: "ของในกล่อง",
-  step: "ขั้นตอน",
-  custom: "ฉากเพิ่มเอง",
-};
 const ORIGIN: Record<string, { label: string; tone: "neutral" | "info" | "warning" }> = {
   template: { label: "จาก template", tone: "neutral" },
   user: { label: "แก้ไขแล้ว", tone: "info" },
