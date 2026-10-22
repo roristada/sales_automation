@@ -8,6 +8,9 @@ describe("composeCaption", () => {
     expect(composeCaption({ ...base, platform: "tiktok" })).toBe(`หูฟัง — รีวิวสั้น\n\n${DISCLOSURE}`);
     expect(composeCaption({ ...base, platform: "shorts" })).toBe(`หูฟัง — รีวิวสั้น\n\n${DISCLOSURE}\n\nhttps://s.shopee.co.th/abc`);
     expect(composeCaption({ ...base, caption: "", affiliateUrl: null, platform: "shorts" })).toBe(DISCLOSURE);
+    expect(composeCaption({ ...base, platform: "shopee_video" })).toBe(`หูฟัง — รีวิวสั้น
+
+${DISCLOSURE}`);
   });
 });
 
@@ -18,6 +21,7 @@ describe("checkPostUrl", () => {
     expect(checkPostUrl("https://www.instagram.com/reel/Cxyz/", "reels")).toBeNull();
     expect(checkPostUrl("https://youtube.com/shorts/abc", "shorts")).toBeNull();
     expect(checkPostUrl("https://youtu.be/abc", "shorts")).toBeNull();
+    expect(checkPostUrl("https://sv.shopee.co.th/share-video/abc", "shopee_video")).toBeNull();
   });
 
   it("rejects other platforms, look-alike hosts, http and home pages", () => {
@@ -27,6 +31,7 @@ describe("checkPostUrl", () => {
     expect(checkPostUrl("http://www.tiktok.com/@me/video/1", "tiktok")).toMatch(/https/);
     expect(checkPostUrl("https://www.instagram.com/", "reels")).toMatch(/โพสต์/);
     expect(checkPostUrl("not a url", "reels")).toBe("ลิงก์ไม่ถูกต้อง");
+    expect(checkPostUrl("https://www.tiktok.com/@me/video/1", "shopee_video")).toMatch(/Shopee/);
   });
 });
 

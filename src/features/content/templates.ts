@@ -24,9 +24,9 @@ export const SCENE_KIND_LABEL: Record<string, string> = {
   step: "ขั้นตอน",
   custom: "ฉากเพิ่มเอง",
 };
-export const PLATFORMS = ["tiktok", "reels", "shorts"] as const;
+export const PLATFORMS = ["tiktok", "reels", "shorts", "shopee_video"] as const;
 export type Platform = (typeof PLATFORMS)[number];
-export const PLATFORM_LABEL: Record<Platform, string> = { tiktok: "TikTok", reels: "Instagram Reels", shorts: "YouTube Shorts" };
+export const PLATFORM_LABEL: Record<Platform, string> = { tiktok: "TikTok", reels: "Instagram Reels", shorts: "YouTube Shorts", shopee_video: "Shopee Video" };
 export const DURATIONS = [15, 30, 45, 60] as const;
 /** Preselected length: shoppable TikTok reviews mostly run ~15–35 s, and shorter costs less AI. */
 export const DEFAULT_DURATION: (typeof DURATIONS)[number] = 15;
@@ -41,8 +41,9 @@ const CTA: Record<Platform, string> = {
   tiktok: "กดตะกร้าดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย",
   reels: "ดูราคาล่าสุดและเช็กโค้ดส่วนลดได้ที่ลิงก์ในไบโอ",
   shorts: "ดูราคาล่าสุดและเช็กโค้ดส่วนลดได้ที่ลิงก์ในคำอธิบาย",
+  shopee_video: "กดตะกร้าใต้คลิปดูราคาล่าสุด แล้วเช็กโค้ดส่วนลดก่อนสั่งได้เลย",
 };
-const CTA_ON_SCREEN: Record<Platform, string> = { tiktok: "กดตะกร้าดูราคา", reels: "ลิงก์ในไบโอ", shorts: "ลิงก์ในคำอธิบาย" };
+const CTA_ON_SCREEN: Record<Platform, string> = { tiktok: "กดตะกร้าดูราคา", reels: "ลิงก์ในไบโอ", shorts: "ลิงก์ในคำอธิบาย", shopee_video: "กดตะกร้าดูราคา" };
 
 export interface TemplateFact {
   id: string;

@@ -52,7 +52,16 @@ const shorts: PublishingAdapter = {
   connection: () => ({ state: "not_connected", note: "ยังไม่ได้เชื่อมต่อ — YouTube Data API ต้องใช้ OAuth และวิดีโอจากแอปที่ยังไม่ผ่านการตรวจจะถูกตั้งเป็นส่วนตัว ระหว่างนี้โพสต์เองแล้วบันทึกลิงก์" }),
 };
 
-export const PUBLISHING_ADAPTERS: Record<Platform, PublishingAdapter> = { tiktok, reels, shorts };
+const shopeeVideo: PublishingAdapter = {
+  platform: "shopee_video",
+  label: "Shopee Video",
+  linkPlacement: "ไม่ต้องใส่ลิงก์ — ตอนโพสต์ในแอป Shopee กด \"เพิ่มสินค้า\" แล้วเลือกสินค้าเดียวกับลิงก์ affiliate (ใช้บัญชีที่สมัคร Shopee Affiliate)",
+  captionLimit: 2200,
+  postHosts: ["shopee.co.th", "shp.ee"],
+  connection: () => ({ state: "not_connected", note: "Shopee ไม่มี API สำหรับโพสต์วิดีโอ — โพสต์ในแอป Shopee แล้วบันทึกลิงก์" }),
+};
+
+export const PUBLISHING_ADAPTERS: Record<Platform, PublishingAdapter> = { tiktok, reels, shorts, shopee_video: shopeeVideo };
 export const getPublishingAdapter = (p: Platform) => PUBLISHING_ADAPTERS[p];
 
 export const PUBLICATION_STATUS_LABEL: Record<PublicationStatus, string> = {
